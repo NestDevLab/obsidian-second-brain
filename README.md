@@ -59,46 +59,87 @@ End of session
 
 ## Setup
 
-### 1. Install ollama + embedding model
+Full setup takes about 10 minutes. You need: [Claude Code](https://claude.ai/code) installed, [Obsidian](https://obsidian.md) with an existing vault, macOS (paths below assume macOS; adjust for Linux).
 
-Vector search requires [ollama](https://ollama.com) running locally with `nomic-embed-text`:
+### Step 1 — Install the upstream obsidian-second-brain skill
+
+The slash commands (`/obsidian-save`, `/obsidian-daily`, etc.) come from the upstream skill, not this repo.
 
 ```bash
-# install ollama (macOS)
+# Clone the upstream skill into Claude's skills directory
+git clone https://github.com/eugeniughelbur/obsidian-second-brain \
+  ~/.claude/skills/obsidian-second-brain
+```
+
+Follow any additional install steps in the [upstream README](https://github.com/eugeniughelbur/obsidian-second-brain#install) (superpowers plugin registration, etc.).
+
+### Step 2 — Clone this repo
+
+Pick a permanent location — the hook commands will reference absolute paths inside it.
+
+```bash
+git clone https://github.com/guidodl/obsidian-second-brain \
+  ~/obsidian-second-brain-hooks
+# or wherever you prefer, e.g. ~/.claude/obsidian-second-brain
+```
+
+### Step 3 — Install ollama + embedding model
+
+The vector search hook requires [ollama](https://ollama.com) running locally.
+
+```bash
+# macOS
 brew install ollama
+
+# Start the server (or add it to your login items)
 ollama serve &
 
-# pull the embedding model (~274 MB)
+# Pull the embedding model (~274 MB, one-time download)
 ollama pull nomic-embed-text
 ```
 
-### 2. Build the initial vault index
+Verify it's working:
+```bash
+curl -s http://localhost:11434/api/embeddings \
+  -d '{"model":"nomic-embed-text","prompt":"test"}' | python3 -c "import json,sys; print(len(json.load(sys.stdin)['embedding']), 'dims')"
+# should print: 768 dims
+```
 
-Copy `hooks/build_vault_index.py` to `~/.claude/` and run it once against your vault:
+### Step 4 — Copy runtime scripts to `~/.claude/`
+
+These three scripts are called directly by the hooks at runtime:
 
 ```bash
-cp hooks/build_vault_index.py ~/.claude/
-cp hooks/update-vault-index.sh ~/.claude/
+REPO=~/obsidian-second-brain-hooks   # adjust to wherever you cloned in Step 2
+
+cp "$REPO/hooks/obsidian-find-hook.py"  ~/.claude/obsidian-find-hook.py
+cp "$REPO/hooks/build_vault_index.py"   ~/.claude/build_vault_index.py
+cp "$REPO/hooks/update-vault-index.sh"  ~/.claude/update-vault-index.sh
+chmod +x "$REPO/hooks/obsidian-bg-agent.sh" \
+         "$REPO/hooks/validate-ai-first.sh" \
+         ~/.claude/update-vault-index.sh
+```
+
+### Step 5 — Build the initial vault index
+
+Run this once to embed all your vault notes into `~/.claude/vault-index.db`:
+
+```bash
 OBSIDIAN_VAULT_PATH=/path/to/your/vault python3 ~/.claude/build_vault_index.py
 ```
 
-This creates `~/.claude/vault-index.db`. The index is rebuilt incrementally after each session via the Stop hook.
+This takes a few minutes on a large vault (a 155-note vault takes ~2 min). After the initial build, the Stop hook keeps it updated incrementally.
 
-### 3. Set env vars in `~/.claude/settings.json`
+### Step 6 — Configure `~/.claude/settings.json`
+
+Add the env vars and hook entries. If `settings.json` already exists, merge the `env` and `hooks` blocks — don't replace the whole file.
 
 ```json
 {
   "env": {
     "OBSIDIAN_VAULT_PATH": "/path/to/your/vault",
     "OBSIDIAN_BG_AGENT_ENABLED": "1"
-  }
-}
-```
-
-### 4. Wire hooks in `~/.claude/settings.json`
-
-```json
-{
+  },
   "hooks": {
     "SessionStart": [
       {
@@ -106,7 +147,7 @@ This creates `~/.claude/vault-index.db`. The index is rebuilt incrementally afte
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /path/to/this/repo/hooks/load_vault_context.py"
+            "command": "python3 /path/to/repo/hooks/load_vault_context.py"
           }
         ]
       }
@@ -123,26 +164,26 @@ This creates `~/.claude/vault-index.db`. The index is rebuilt incrementally afte
         ]
       }
     ],
-    "PostCompact": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash /path/to/this/repo/hooks/obsidian-bg-agent.sh",
-            "timeout": 10,
-            "async": true
-          }
-        ]
-      }
-    ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit",
         "hooks": [
           {
             "type": "command",
-            "command": "bash /path/to/this/repo/hooks/validate-ai-first.sh"
+            "command": "bash /path/to/repo/hooks/validate-ai-first.sh"
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /path/to/repo/hooks/obsidian-bg-agent.sh",
+            "timeout": 10,
+            "async": true
           }
         ]
       }
@@ -170,11 +211,27 @@ This creates `~/.claude/vault-index.db`. The index is rebuilt incrementally afte
 }
 ```
 
-### 5. Make shell hooks executable
+Replace every `/path/to/repo` with the absolute path from Step 2, and `/path/to/your/vault` with your Obsidian vault path.
 
-```bash
-chmod +x hooks/obsidian-bg-agent.sh hooks/validate-ai-first.sh hooks/update-vault-index.sh
+### Step 7 — Initialize your vault
+
+The vault needs a `_CLAUDE.md` operating manual for the SessionStart hook to inject. Start a new Claude Code session in your vault directory and run:
+
 ```
+/obsidian-init
+```
+
+This creates `_CLAUDE.md`, the folder structure, and seed notes. You only need to do this once.
+
+### Step 8 — Verify
+
+Open a new Claude Code session. You should see:
+
+1. **SessionStart context injected** — Claude knows your vault structure without being told
+2. **System reminder on first message** — a block labelled `Relevant wiki notes (vector search):` appears at the top of Claude's context with matching note snippets
+3. **Auto-save on session end** — after you `/exit`, a headless Claude agent runs `/obsidian-save` and the index updates
+
+If the vector search block is missing, check that ollama is running (`ollama list`) and the DB exists (`ls ~/.claude/vault-index.db`).
 
 ## Benchmark (2026-06-05, 155 files / 387 chunks)
 
