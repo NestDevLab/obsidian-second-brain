@@ -89,7 +89,7 @@ The vector search hook requires [ollama](https://ollama.com) running locally.
 
 ```bash
 # macOS
-brew install ollama
+brew install --cask ollama
 
 # Start the server (or add it to your login items)
 ollama serve &
@@ -125,7 +125,7 @@ chmod +x "$REPO/hooks/obsidian-bg-agent.sh" \
 Run this once to embed all your vault notes into `~/.claude/vault-index.db`:
 
 ```bash
-OBSIDIAN_VAULT_PATH=/path/to/your/vault python3 ~/.claude/build_vault_index.py
+OBSIDIAN_VAULT_PATH=<OBSIDIAN_VAULT_PATH> python3 ~/.claude/build_vault_index.py
 ```
 
 This takes a few minutes on a large vault (a 155-note vault takes ~2 min). After the initial build, the Stop hook keeps it updated incrementally.
@@ -137,7 +137,7 @@ Add the env vars and hook entries. If `settings.json` already exists, merge the 
 ```json
 {
   "env": {
-    "OBSIDIAN_VAULT_PATH": "/path/to/your/vault",
+    "OBSIDIAN_VAULT_PATH": "<PATH_TO_YOUR_VAULT>",
     "OBSIDIAN_BG_AGENT_ENABLED": "1"
   },
   "hooks": {
@@ -147,7 +147,7 @@ Add the env vars and hook entries. If `settings.json` already exists, merge the 
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /path/to/repo/hooks/load_vault_context.py"
+            "command": "python3 <PATH_TO_REPO>/hooks/load_vault_context.py"
           }
         ]
       }
@@ -170,7 +170,7 @@ Add the env vars and hook entries. If `settings.json` already exists, merge the 
         "hooks": [
           {
             "type": "command",
-            "command": "bash /path/to/repo/hooks/validate-ai-first.sh"
+            "command": "bash <PATH_TO_REPO>/hooks/validate-ai-first.sh"
           }
         ]
       }
@@ -181,7 +181,7 @@ Add the env vars and hook entries. If `settings.json` already exists, merge the 
         "hooks": [
           {
             "type": "command",
-            "command": "bash /path/to/repo/hooks/obsidian-bg-agent.sh",
+            "command": "bash <PATH_TO_REPO>/hooks/obsidian-bg-agent.sh",
             "timeout": 10,
             "async": true
           }
@@ -194,13 +194,13 @@ Add the env vars and hook entries. If `settings.json` already exists, merge the 
         "hooks": [
           {
             "type": "command",
-            "command": "OBSIDIAN_VAULT_PATH=/path/to/your/vault /opt/homebrew/bin/claude --dangerously-skip-permissions -p 'Read ~/.claude/skills/obsidian-second-brain/obsidian-second-brain.md and run /obsidian-save on this session.' 2>/dev/null || true",
+            "command": "OBSIDIAN_VAULT_PATH=<PATH_TO_YOUR_VAULT> /opt/homebrew/bin/claude --dangerously-skip-permissions -p 'Read ~/.claude/skills/obsidian-second-brain/obsidian-second-brain.md and run /obsidian-save on this session.' 2>/dev/null || true",
             "timeout": 120,
             "async": true
           },
           {
             "type": "command",
-            "command": "OBSIDIAN_VAULT_PATH=/path/to/your/vault bash ~/.claude/update-vault-index.sh",
+            "command": "OBSIDIAN_VAULT_PATH=<PATH_TO_YOUR_VAULT> bash ~/.claude/update-vault-index.sh",
             "timeout": 300,
             "async": true
           }
@@ -211,7 +211,7 @@ Add the env vars and hook entries. If `settings.json` already exists, merge the 
 }
 ```
 
-Replace every `/path/to/repo` with the absolute path from Step 2, and `/path/to/your/vault` with your Obsidian vault path.
+Replace every `<PATH_TO_REPO>` with the absolute path from Step 2, and `<PATH_TO_YOUR_VAULT>` with your Obsidian vault path.
 
 ### Step 7 — Initialize your vault
 
@@ -222,6 +222,12 @@ The vault needs a `_CLAUDE.md` operating manual for the SessionStart hook to inj
 ```
 
 This creates `_CLAUDE.md`, the folder structure, and seed notes. You only need to do this once.
+
+If the skill doesn't register automatically, run the setup script manually to be able to execute it:
+
+```bash
+bash ~/.claude/skills/obsidian-second-brain/scripts/setup.sh "<PATH_TO_YOUR_VAULT>"
+```
 
 ### Step 8 — Verify
 
