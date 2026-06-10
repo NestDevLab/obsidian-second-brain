@@ -194,7 +194,7 @@ Add the env vars and hook entries. If `settings.json` already exists, merge the 
         "hooks": [
           {
             "type": "command",
-            "command": "OBSIDIAN_VAULT_PATH=<PATH_TO_YOUR_VAULT> /opt/homebrew/bin/claude --dangerously-skip-permissions -p 'Read ~/.claude/skills/obsidian-second-brain/obsidian-second-brain.md and run /obsidian-save on this session.' 2>/dev/null || true",
+            "command": "OBSIDIAN_VAULT_PATH=<PATH_TO_YOUR_VAULT> <CLAUDE_BINNARY> --dangerously-skip-permissions -p 'Read ~/.claude/skills/obsidian-second-brain/SKILL.md and run /obsidian-save on this session.' 2>/dev/null || true",
             "timeout": 120,
             "async": true
           },
@@ -211,7 +211,8 @@ Add the env vars and hook entries. If `settings.json` already exists, merge the 
 }
 ```
 
-Replace every `<PATH_TO_REPO>` with the absolute path from Step 2, and `<PATH_TO_YOUR_VAULT>` with your Obsidian vault path.
+Replace every `<PATH_TO_REPO>` with the absolute path from Step 2, `<PATH_TO_YOUR_VAULT>` with your Obsidian vault path
+and `<CLAUDE_BINNARY>` with what you get from the execution of `which claude`.
 
 ### Step 7 — Initialize your vault
 
