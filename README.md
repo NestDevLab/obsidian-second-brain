@@ -194,7 +194,7 @@ Add the env vars and hook entries. If `settings.json` already exists, merge the 
         "hooks": [
           {
             "type": "command",
-            "command": "OBSIDIAN_VAULT_PATH=<PATH_TO_YOUR_VAULT> /opt/homebrew/bin/claude --permission-mode default --add-dir <PATH_TO_YOUR_VAULT> --allowedTools 'Read' 'Edit' 'Write' 'Glob' 'Grep' 'Task' 'TodoWrite' 'Skill' 'Bash(mkdir *)' -p 'Read ~/.claude/skills/obsidian-second-brain/obsidian-second-brain.md and run /obsidian-save on this session.' 2>/dev/null || true",
+"command": "OBSIDIAN_VAULT_PATH=<PATH_TO_YOUR_VAULT> <CLAUDE_BINARY> --permission-mode default --add-dir <PATH_TO_YOUR_VAULT> --allowedTools 'Read' 'Edit' 'Write' 'Glob' 'Grep' 'Task' 'TodoWrite' 'Skill' 'Bash(mkdir *)' -p 'Read ~/.claude/skills/obsidian-second-brain/SKILL.md and run /obsidian-save on this session.' 2>/dev/null || true",
             "timeout": 120,
             "async": true
           },
@@ -211,7 +211,7 @@ Add the env vars and hook entries. If `settings.json` already exists, merge the 
 }
 ```
 
-Replace every `<PATH_TO_REPO>` with the absolute path from Step 2, and `<PATH_TO_YOUR_VAULT>` with your Obsidian vault path.
+Replace every `<PATH_TO_REPO>` with the absolute path from Step 2, `<PATH_TO_YOUR_VAULT>` with your Obsidian vault path, and `<CLAUDE_BINARY>` with what you get from `which claude`.
 
 > **Stop-hook permissions:** the auto-save agent runs with `--permission-mode default` and an explicit `--allowedTools` allowlist (file tools, subagent `Task`, and `Bash(mkdir *)` only) rather than `--dangerously-skip-permissions`. In headless `-p` mode any tool outside the list is denied automatically, so a misfire can't run arbitrary `Bash` or touch files outside the vault. `--add-dir` grants write access to the vault path. If your global `settings.json` sets `defaultMode: bypassPermissions`, the explicit `--permission-mode default` flag is required to re-enable the allowlist for this spawned session.
 
