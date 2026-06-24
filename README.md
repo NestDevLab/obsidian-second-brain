@@ -18,7 +18,7 @@ Every prompt
   └── UserPromptSubmit hook → obsidian-find-hook.py
         Embeds the prompt via ollama (nomic-embed-text),
         runs cosine similarity against ~/.claude/vault-index.db,
-        injects the top 5 matching note snippets as context.
+        injects the top 3 matching note snippets as context.
         Falls back to grep if the index doesn't exist.
 
 Every vault write (Write/Edit tool)
@@ -45,7 +45,7 @@ End of session
 | File | Trigger | What it does |
 |---|---|---|
 | `hooks/load_vault_context.py` | `SessionStart` | Reads `_CLAUDE.md` from the vault and injects it into every session as context. Requires `OBSIDIAN_VAULT_PATH` env var. |
-| `hooks/obsidian-find-hook.py` | `UserPromptSubmit` | Embeds each prompt via ollama, runs cosine similarity against the vault index DB, injects up to 5 matching note snippets as context. Aggregates each note's top 2 chunks, boosts notes whose title/path matches query terms, and drops results below `MIN_SCORE` (default `0.55`, set via `OBSIDIAN_FIND_MIN_SCORE`) so off-topic prompts inject nothing. Falls back to grep if index is absent. |
+| `hooks/obsidian-find-hook.py` | `UserPromptSubmit` | Embeds each prompt via ollama, runs cosine similarity against the vault index DB, injects up to 3 matching note snippets as context. Aggregates each note's top 2 chunks, boosts notes whose title/path matches query terms, and drops results below `MIN_SCORE` (default `0.60`, set via `OBSIDIAN_FIND_MIN_SCORE`) so off-topic prompts inject nothing. Falls back to grep if index is absent. |
 | `hooks/build_vault_index.py` | (one-shot / Stop) | Builds or rebuilds `~/.claude/vault-index.db` — a SQLite DB of `nomic-embed-text` embeddings for all vault notes. Supports `--incremental` to skip unchanged files. |
 | `hooks/update-vault-index.sh` | `Stop` | Thin wrapper that calls `build_vault_index.py --incremental` after each session, logging to `~/.claude/vault-index.log`. |
 | `hooks/obsidian-bg-agent.sh` | `PostCompact` | After Claude compacts context, runs a headless agent that propagates the session summary to the vault. Opt-in: requires `OBSIDIAN_BG_AGENT_ENABLED=1`. |
