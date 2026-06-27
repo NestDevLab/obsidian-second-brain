@@ -15,11 +15,11 @@ VAULT = os.environ.get("OBSIDIAN_VAULT_PATH", "/Users/guido.dilauro/WORKDIR/WORK
 DB = os.path.expanduser("~/.claude/vault-index.db")
 OLLAMA_URL = "http://localhost:11434/api/embeddings"
 MODEL = "nomic-embed-text"
-TOP_K = 5
-SNIPPET_CHARS = 800
+TOP_K = 3
+SNIPPET_CHARS = 400
 # Drop results whose final score is below this cosine-equivalent cutoff so
 # off-topic prompts inject nothing instead of 5 noisy notes. Override via env.
-MIN_SCORE = float(os.environ.get("OBSIDIAN_FIND_MIN_SCORE", "0.55"))
+MIN_SCORE = float(os.environ.get("OBSIDIAN_FIND_MIN_SCORE", "0.60"))
 # How many of a note's best chunks to average — more robust than a single chunk.
 CHUNKS_PER_NOTE = 2
 # Score added when a meaningful query word appears in the note's title/path.
