@@ -1,11 +1,23 @@
 {
   "schemaVersion": 2,
   "name": "NestDevLab/obsidian-second-brain",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "provides": [
     {
       "type": "instructions",
       "path": "instructions/AGENTS.md"
+    },
+    {
+      "type": "skills",
+      "path": "skills",
+      "assets": [
+        {
+          "from": "obsidian_amf",
+          "into": "scripts/obsidian_amf",
+          "include": ["*.py"],
+          "mode": "preserve"
+        }
+      ]
     }
   ]
 }
