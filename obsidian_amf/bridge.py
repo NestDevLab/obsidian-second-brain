@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Callable, Iterable
 
+from .context_signer import ContextSigner
+
 
 MODES = {"standalone", "shadow", "active"}
 MAX_MARKDOWN_BYTES = 16 * 1024 * 1024
@@ -44,6 +46,10 @@ class BridgeConfig:
     direct_db: Path | None = None
     amf_url: str | None = None
     amf_token: str | None = None
+    context_key_ring: Path | None = None
+    policy_revision: str | None = None
+    context_runtime: str = "obsidian"
+    context_profile: str = "default"
     timeout_seconds: float = 10.0
 
     def validate(self) -> "BridgeConfig":
@@ -172,10 +178,12 @@ class DirectSqliteProvider:
 class AmfHttpProvider:
     destination = "amf"
 
-    def __init__(self, base_url: str, token: str | None, timeout_seconds: float):
+    def __init__(self, base_url: str, token: str | None, timeout_seconds: float,
+                 context_signer: ContextSigner | None = None):
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.timeout_seconds = timeout_seconds
+        self.context_signer = context_signer
 
     def _request(self, method: str, path: str, payload: dict, headers: dict[str, str] | None = None) -> dict:
         request = urllib.request.Request(
@@ -203,7 +211,10 @@ class AmfHttpProvider:
     def context_search(self, *, query: str, scopes: list[str], vault_ids: list[str], purpose: str,
                        context_token: str, limit: int = 20) -> dict:
         payload = {"query": query, "scopes": scopes, "vaultIds": vault_ids, "purpose": purpose, "limit": limit}
-        return self._request("POST", "/v2/context/search", payload, {"X-AMF-Context-Token": context_token})
+        token = context_token or (self.context_signer.issue_context_search(payload) if self.context_signer else "")
+        if not token:
+            raise RuntimeError("context_token_required")
+        return self._request("POST", "/v2/context/search", payload, {"X-AMF-Context-Token": token})
 
     def propose(self, proposal: dict, idempotency_key: str) -> dict:
         return self._request("POST", "/v2/memory/proposals", proposal, {"Idempotency-Key": idempotency_key})
@@ -233,7 +244,16 @@ class ObsidianDocumentBridge:
             if config.mode in {"standalone", "shadow"}:
                 providers["direct"] = DirectSqliteProvider(config.direct_db)  # type: ignore[arg-type]
             if config.mode in {"active", "shadow"}:
-                providers["amf"] = AmfHttpProvider(config.amf_url or "", config.amf_token, config.timeout_seconds)
+                signer = None
+                if config.context_key_ring:
+                    signer = ContextSigner(
+                        config.context_key_ring, actor=config.actor,
+                        policy_revision=config.policy_revision or "", vault_id=config.vault_id,
+                        runtime=config.context_runtime, profile=config.context_profile,
+                    )
+                providers["amf"] = AmfHttpProvider(
+                    config.amf_url or "", config.amf_token, config.timeout_seconds, signer
+                )
         self.providers = providers
 
     def _init_state(self) -> None:
