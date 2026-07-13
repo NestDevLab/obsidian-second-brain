@@ -94,6 +94,11 @@ monotonic revision and AMF-compatible idempotency key. Events are committed to
 the outbox before delivery, so an unavailable backend does not block vault work
 or lose changes.
 
+Vault reads use directory descriptors and no-follow opens. Files over 16 MiB are
+inventoried with failed extraction but their text is not delivered. Unsafe reads
+degrade status without tombstoning an existing note; inconsistent outbox rows are
+quarantined before provider delivery.
+
 ```bash
 # Standalone SQLite
 python3 -m obsidian_amf scan \
