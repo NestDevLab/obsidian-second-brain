@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 2,
+  "name": "NestDevLab/obsidian-second-brain",
+  "version": "1.5.0",
+  "provides": [
+    {
+      "type": "instructions",
+      "path": "instructions/AGENTS.md"
+    },
+    {
+      "type": "hooks",
+      "path": "hooks"
+    }
+  ]
+}
