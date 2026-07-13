@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 import tempfile
 import threading
@@ -81,8 +82,8 @@ class ObsidianDocumentBridgeTests(unittest.TestCase):
         (self.vault / ".obsidian" / "Internal.md").write_text("ignore", encoding="utf-8")
         with self.bridge() as bridge:
             first = bridge.scan()
-            self.assertEqual(first, {"generation": 1, "files": 1, "created": 1, "updated": 0, "renamed": 0, "deleted": 0})
-            self.assertEqual(bridge.drain(), {"attempted": 1, "delivered": 1, "failed": 0, "pending": 0})
+            self.assertEqual(first, {"generation": 1, "files": 1, "rejected": 0, "created": 1, "updated": 0, "renamed": 0, "deleted": 0})
+            self.assertEqual(bridge.drain(), {"attempted": 1, "delivered": 1, "failed": 0, "quarantined": 0, "pending": 0})
             second = bridge.scan()
             self.assertEqual(second["created"], 0)
             self.assertEqual(second["updated"], 0)
@@ -94,6 +95,8 @@ class ObsidianDocumentBridgeTests(unittest.TestCase):
         row = corpus.execute("SELECT path,revision,tombstone,text FROM documents").fetchone()
         corpus.close()
         self.assertEqual(row, ("Projects/Plan.md", 1, 0, "# Plan\n"))
+        self.assertEqual(os.stat(self.root / "state.sqlite").st_mode & 0o777, 0o600)
+        self.assertEqual(os.stat(self.root / "documents.sqlite").st_mode & 0o777, 0o600)
 
     def test_standalone_search_reads_the_direct_corpus(self):
         (self.vault / "Decisions.md").write_text("We selected SQLite for the local backend.", encoding="utf-8")
@@ -230,7 +233,7 @@ class ObsidianDocumentBridgeTests(unittest.TestCase):
         with self.bridge(mode="shadow", providers={"direct": direct, "amf": amf}) as bridge:
             bridge.scan()
             result = bridge.drain()
-            self.assertEqual(result, {"attempted": 2, "delivered": 1, "failed": 1, "pending": 1})
+            self.assertEqual(result, {"attempted": 2, "delivered": 1, "failed": 1, "quarantined": 0, "pending": 1})
             destinations = bridge.connection.execute(
                 "SELECT destination,status FROM outbox ORDER BY rowid"
             ).fetchall()
@@ -276,6 +279,48 @@ class ObsidianDocumentBridgeTests(unittest.TestCase):
         self.assertIsNone(payload["text"])
         self.assertEqual(payload["document"]["extraction"]["status"], "failed")
         self.assertEqual(payload["document"]["extraction"]["errorCode"], "invalid_utf8")
+
+    def test_symlink_swap_is_rejected_without_tombstoning_the_tracked_note(self):
+        note = self.vault / "Tracked.md"
+        note.write_text("inside", encoding="utf-8")
+        outside = self.root / "outside.md"
+        outside.write_text("private outside content", encoding="utf-8")
+        with self.bridge() as bridge:
+            bridge.scan()
+            bridge.drain()
+            note.unlink()
+            note.symlink_to(outside)
+            result = bridge.scan()
+            self.assertEqual(result["rejected"], 1)
+            self.assertEqual(result["deleted"], 0)
+            self.assertFalse(bridge.status()["healthy"])
+            self.assertEqual(bridge.connection.execute(
+                "SELECT tombstone FROM source_documents WHERE path='Tracked.md'"
+            ).fetchone()[0], 0)
+
+    def test_oversized_markdown_is_inventoried_without_sending_its_text(self):
+        (self.vault / "Large.md").write_bytes(b"x" * (16 * 1024 * 1024 + 1))
+        provider = RecordingProvider()
+        with self.bridge(mode="active", providers={"amf": provider}) as bridge:
+            result = bridge.scan()
+            bridge.drain()
+        self.assertEqual(result["rejected"], 0)
+        payload = provider.calls[0][1]
+        self.assertIsNone(payload["text"])
+        self.assertEqual(payload["document"]["extraction"]["errorCode"], "content_too_large")
+
+    def test_tampered_outbox_payload_is_quarantined_before_delivery(self):
+        (self.vault / "Queued.md").write_text("safe", encoding="utf-8")
+        provider = RecordingProvider()
+        with self.bridge(mode="active", providers={"amf": provider}) as bridge:
+            bridge.scan()
+            with bridge.connection:
+                bridge.connection.execute("UPDATE outbox SET payload_json='{}'")
+            result = bridge.drain()
+            self.assertEqual(result["quarantined"], 1)
+            self.assertEqual(result["pending"], 0)
+            self.assertFalse(bridge.status()["healthy"])
+        self.assertEqual(provider.calls, [])
 
     def test_rename_requires_identity_and_digest_evidence(self):
         original = self.vault / "A.md"

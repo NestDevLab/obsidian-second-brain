@@ -19,7 +19,7 @@ in `OBSIDIAN_AMF_TOKEN` and `OBSIDIAN_AMF_CONTEXT_TOKEN`: do not print or persis
 
 ## Operations
 
-- `status`: report cursor, pending/retrying outbox counts, mode, and health.
+- `status`: report cursor, rejected files, pending/retrying/quarantined outbox counts, mode, and health.
 - `scan`: read Markdown, record revisions/tombstones, then drain; use `--no-drain` only for a
   deliberate capture-only run. AMF outage must leave events queued, not block vault work.
 - `drain`: retry the durable outbox without rescanning.
@@ -33,4 +33,5 @@ in `OBSIDIAN_AMF_TOKEN` and `OBSIDIAN_AMF_CONTEXT_TOKEN`: do not print or persis
   sealed. Managed projections are not canonical and must not be edited as such.
 
 Before a mutating operation, state the mode and target vault. Finish with the command result plus
-pending/retrying counts where applicable; never call a scan successful delivery when events remain.
+outbox counts where applicable; rejected files, retries, or quarantines are degraded, and a scan is
+not successful delivery while events remain.

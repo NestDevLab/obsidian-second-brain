@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import stat
 import urllib.error
 import urllib.request
 import uuid
@@ -16,6 +17,7 @@ from typing import Callable, Iterable
 
 
 MODES = {"standalone", "shadow", "active"}
+MAX_MARKDOWN_BYTES = 16 * 1024 * 1024
 EXCLUDED_PARTS = {
     ".git", ".obsidian", ".trash", ".cache", ".amf", "__pycache__",
     "trash", "cache", "caches",
@@ -65,8 +67,11 @@ class DirectSqliteProvider:
     destination = "direct"
 
     def __init__(self, path: Path):
+        if path.parent.exists() and path.parent.is_symlink():
+            raise RuntimeError("state_path_unsafe")
         path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(path)
+        os.chmod(path, 0o600)
         self.connection.row_factory = sqlite3.Row
         self.connection.executescript(
             """
@@ -116,6 +121,10 @@ class DirectSqliteProvider:
             ).fetchone()
             expected = payload["expectedRevision"]
             if (latest is None and expected is not None) or (latest is not None and latest["revision"] != expected):
+                raise RuntimeError("revision_conflict")
+            if (latest is None and document["revision"] != 1) or (
+                latest is not None and document["revision"] != latest["revision"] + 1
+            ):
                 raise RuntimeError("revision_conflict")
             values = (
                 payload["idempotencyKey"], document["documentId"], document["vaultId"],
@@ -212,8 +221,11 @@ class ObsidianDocumentBridge:
         self.config = config.validate()
         self.now = now
         self.document_id_factory = document_id_factory or (lambda: f"doc_{uuid.uuid4().hex}")
-        self.config.state_db.parent.mkdir(parents=True, exist_ok=True)
+        if self.config.state_db.parent.exists() and self.config.state_db.parent.is_symlink():
+            raise RuntimeError("state_path_unsafe")
+        self.config.state_db.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.connection = sqlite3.connect(self.config.state_db)
+        os.chmod(self.config.state_db, 0o600)
         self.connection.row_factory = sqlite3.Row
         self._init_state()
         if providers is None:
@@ -232,7 +244,8 @@ class ObsidianDocumentBridge:
               vault_id TEXT PRIMARY KEY,
               generation INTEGER NOT NULL,
               completed_at TEXT,
-              file_count INTEGER NOT NULL DEFAULT 0
+              file_count INTEGER NOT NULL DEFAULT 0,
+              rejected_file_count INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS source_documents (
               document_id TEXT PRIMARY KEY,
@@ -256,6 +269,7 @@ class ObsidianDocumentBridge:
               document_id TEXT NOT NULL,
               revision INTEGER NOT NULL,
               payload_json TEXT NOT NULL,
+              payload_digest TEXT,
               status TEXT NOT NULL DEFAULT 'pending',
               attempts INTEGER NOT NULL DEFAULT 0,
               last_error TEXT,
@@ -265,6 +279,17 @@ class ObsidianDocumentBridge:
             );
             """
         )
+        cursor_columns = {row[1] for row in self.connection.execute("PRAGMA table_info(scan_cursors)")}
+        if "rejected_file_count" not in cursor_columns:
+            self.connection.execute("ALTER TABLE scan_cursors ADD COLUMN rejected_file_count INTEGER NOT NULL DEFAULT 0")
+        outbox_columns = {row[1] for row in self.connection.execute("PRAGMA table_info(outbox)")}
+        if "payload_digest" not in outbox_columns:
+            self.connection.execute("ALTER TABLE outbox ADD COLUMN payload_digest TEXT")
+        for row in self.connection.execute("SELECT event_id,payload_json FROM outbox WHERE payload_digest IS NULL"):
+            self.connection.execute(
+                "UPDATE outbox SET payload_digest=? WHERE event_id=?",
+                (hashlib.sha256(row["payload_json"].encode("utf-8")).hexdigest(), row["event_id"]),
+            )
         self.connection.commit()
 
     def _destinations(self) -> tuple[str, ...]:
@@ -274,20 +299,64 @@ class ObsidianDocumentBridge:
             return ("amf",)
         return ("direct", "amf")
 
-    def _iter_markdown(self) -> Iterable[tuple[str, Path]]:
-        root = self.config.vault_path.resolve()
+    def _iter_markdown(self) -> Iterable[str]:
         for path in sorted(self.config.vault_path.rglob("*.md")):
             relative = path.relative_to(self.config.vault_path)
-            if path.is_symlink() or not path.is_file():
-                continue
             if any(part.startswith(".") or part.lower() in EXCLUDED_PARTS for part in relative.parts):
                 continue
             if path.name.endswith("~") or path.name.startswith(".#"):
                 continue
-            resolved = path.resolve()
-            if root not in resolved.parents:
-                continue
-            yield PurePosixPath(*relative.parts).as_posix(), path
+            yield PurePosixPath(*relative.parts).as_posix()
+
+    def _read_markdown(self, relative: str) -> dict:
+        parts = PurePosixPath(relative).parts
+        directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        root_fd = os.open(self.config.vault_path, directory_flags)
+        directory_fd = root_fd
+        file_fd = None
+        try:
+            for part in parts[:-1]:
+                next_fd = os.open(part, directory_flags, dir_fd=directory_fd)
+                if directory_fd != root_fd:
+                    os.close(directory_fd)
+                directory_fd = next_fd
+            file_fd = os.open(parts[-1], os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), dir_fd=directory_fd)
+            before = os.fstat(file_fd)
+            if not stat.S_ISREG(before.st_mode):
+                raise RuntimeError("source_not_regular")
+            hasher = hashlib.sha256()
+            chunks = []
+            while True:
+                chunk = os.read(file_fd, 1024 * 1024)
+                if not chunk:
+                    break
+                hasher.update(chunk)
+                if before.st_size <= MAX_MARKDOWN_BYTES:
+                    chunks.append(chunk)
+            after = os.fstat(file_fd)
+            if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
+                after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns
+            ):
+                raise RuntimeError("source_changed_during_read")
+            content = b"".join(chunks) if before.st_size <= MAX_MARKDOWN_BYTES else None
+            if content is None:
+                text, extraction_error = None, "content_too_large"
+            else:
+                try:
+                    text, extraction_error = content.decode("utf-8"), None
+                except UnicodeDecodeError:
+                    text, extraction_error = None, "invalid_utf8"
+            return {
+                "path": relative, "file_identity": f"{before.st_dev}:{before.st_ino}",
+                "digest": f"sha256:{hasher.hexdigest()}", "modified_at": utc_timestamp(before.st_mtime),
+                "text": text, "extraction_error": extraction_error,
+            }
+        finally:
+            if file_fd is not None:
+                os.close(file_fd)
+            if directory_fd != root_fd:
+                os.close(directory_fd)
+            os.close(root_fd)
 
     def _document_payload(
         self,
@@ -343,32 +412,51 @@ class ObsidianDocumentBridge:
     def _enqueue(self, operation: str, payload: dict) -> None:
         document = payload["document"]
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        payload_digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
         for destination in self._destinations():
             event_id = hashlib.sha256(f"{destination}\0{payload['idempotencyKey']}".encode()).hexdigest()
             self.connection.execute(
                 """INSERT OR IGNORE INTO outbox
-                   (event_id,destination,operation,document_id,revision,payload_json,created_at)
-                   VALUES (?,?,?,?,?,?,?)""",
-                (event_id, destination, operation, document["documentId"], document["revision"], encoded, self.now()),
+                   (event_id,destination,operation,document_id,revision,payload_json,payload_digest,created_at)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (event_id, destination, operation, document["documentId"], document["revision"], encoded, payload_digest, self.now()),
             )
+
+    def _verified_outbox_payload(self, row: sqlite3.Row) -> dict:
+        encoded = row["payload_json"]
+        if hashlib.sha256(encoded.encode("utf-8")).hexdigest() != row["payload_digest"]:
+            raise RuntimeError("outbox_integrity_failed")
+        try:
+            payload = json.loads(encoded)
+        except (TypeError, json.JSONDecodeError) as error:
+            raise RuntimeError("outbox_integrity_failed") from error
+        document = payload.get("document") if isinstance(payload, dict) else None
+        if not isinstance(document, dict) or payload.get("idempotencyKey") is None:
+            raise RuntimeError("outbox_integrity_failed")
+        expected_event = hashlib.sha256(f"{row['destination']}\0{payload['idempotencyKey']}".encode()).hexdigest()
+        document_id = str(document.get("documentId", ""))
+        content_digest = str(document.get("contentDigest", ""))
+        expected_key = (
+            f"doc:{document.get('vaultId')}:{document_id.removeprefix('doc_')}:"
+            f"{document.get('revision')}:{content_digest.removeprefix('sha256:')}"
+        )
+        if expected_event != row["event_id"] or document.get("documentId") != row["document_id"] \
+                or payload["idempotencyKey"] != expected_key or document.get("revision") != row["revision"] \
+                or row["destination"] not in self._destinations() \
+                or bool(document.get("tombstone")) != (row["operation"] == "delete"):
+            raise RuntimeError("outbox_integrity_failed")
+        return payload
 
     def scan(self) -> dict:
         observed = []
-        for relative, path in self._iter_markdown():
-            stat = path.stat()
-            content = path.read_bytes()
+        rejected_paths = []
+        discovered_paths = set()
+        for relative in self._iter_markdown():
+            discovered_paths.add(relative)
             try:
-                text, extraction_error = content.decode("utf-8"), None
-            except UnicodeDecodeError:
-                text, extraction_error = None, "invalid_utf8"
-            observed.append({
-                "path": relative,
-                "file_identity": f"{stat.st_dev}:{stat.st_ino}",
-                "digest": sha256_digest(content),
-                "modified_at": utc_timestamp(stat.st_mtime),
-                "text": text,
-                "extraction_error": extraction_error,
-            })
+                observed.append(self._read_markdown(relative))
+            except (OSError, RuntimeError) as error:
+                rejected_paths.append((relative, str(error)[:128]))
         observed_paths = {item["path"] for item in observed}
         created = updated = renamed = deleted = 0
         with self.connection:
@@ -376,6 +464,11 @@ class ObsidianDocumentBridge:
                 "SELECT generation FROM scan_cursors WHERE vault_id=?", (self.config.vault_id,)
             ).fetchone()
             generation = (cursor["generation"] if cursor else 0) + 1
+            for relative, _error in rejected_paths:
+                self.connection.execute(
+                    "UPDATE source_documents SET last_seen_generation=? WHERE vault_id=? AND path=? AND tombstone=0",
+                    (generation, self.config.vault_id, relative),
+                )
             for item in observed:
                 row = self.connection.execute(
                     "SELECT * FROM source_documents WHERE vault_id=? AND path=? AND tombstone=0",
@@ -448,24 +541,27 @@ class ObsidianDocumentBridge:
                 self._enqueue("delete", payload)
                 deleted += 1
             self.connection.execute(
-                """INSERT INTO scan_cursors(vault_id,generation,completed_at,file_count) VALUES (?,?,?,?)
+                """INSERT INTO scan_cursors(vault_id,generation,completed_at,file_count,rejected_file_count) VALUES (?,?,?,?,?)
                    ON CONFLICT(vault_id) DO UPDATE SET generation=excluded.generation,
-                     completed_at=excluded.completed_at,file_count=excluded.file_count""",
-                (self.config.vault_id, generation, self.now(), len(observed)),
+                     completed_at=excluded.completed_at,file_count=excluded.file_count,
+                     rejected_file_count=excluded.rejected_file_count""",
+                (self.config.vault_id, generation, self.now(), len(discovered_paths), len(rejected_paths)),
             )
-        return {"generation": generation, "files": len(observed), "created": created, "updated": updated, "renamed": renamed, "deleted": deleted}
+        return {"generation": generation, "files": len(discovered_paths), "rejected": len(rejected_paths),
+                "created": created, "updated": updated, "renamed": renamed, "deleted": deleted}
 
     def drain(self, limit: int = 100) -> dict:
-        delivered = failed = 0
+        delivered = failed = quarantined = 0
         rows = self.connection.execute(
             "SELECT * FROM outbox WHERE status='pending' ORDER BY rowid LIMIT ?", (limit,)
         ).fetchall()
         for row in rows:
-            provider = self.providers.get(row["destination"])
             try:
+                payload = self._verified_outbox_payload(row)
+                provider = self.providers.get(row["destination"])
                 if provider is None:
                     raise RuntimeError("provider_unconfigured")
-                provider.deliver(row["operation"], json.loads(row["payload_json"]))
+                provider.deliver(row["operation"], payload)
                 with self.connection:
                     self.connection.execute(
                         "UPDATE outbox SET status='delivered',attempts=attempts+1,last_error=NULL,delivered_at=? WHERE event_id=?",
@@ -473,13 +569,22 @@ class ObsidianDocumentBridge:
                     )
                 delivered += 1
             except Exception as error:
+                if str(error) == "outbox_integrity_failed":
+                    with self.connection:
+                        self.connection.execute(
+                            "UPDATE outbox SET status='quarantined',attempts=attempts+1,last_error=? WHERE event_id=?",
+                            ("outbox_integrity_failed", row["event_id"]),
+                        )
+                    quarantined += 1
+                    continue
                 with self.connection:
                     self.connection.execute(
                         "UPDATE outbox SET attempts=attempts+1,last_error=? WHERE event_id=?",
                         (str(error)[:256], row["event_id"]),
                     )
                 failed += 1
-        return {"attempted": len(rows), "delivered": delivered, "failed": failed, "pending": self.pending_count()}
+        return {"attempted": len(rows), "delivered": delivered, "failed": failed, "quarantined": quarantined,
+                "pending": self.pending_count()}
 
     def pending_count(self) -> int:
         return self.connection.execute("SELECT count(*) FROM outbox WHERE status='pending'").fetchone()[0]
@@ -491,12 +596,16 @@ class ObsidianDocumentBridge:
         failed = self.connection.execute(
             "SELECT count(*) FROM outbox WHERE status='pending' AND attempts>0"
         ).fetchone()[0]
+        quarantined = self.connection.execute(
+            "SELECT count(*) FROM outbox WHERE status='quarantined'"
+        ).fetchone()[0]
+        rejected = cursor["rejected_file_count"] if cursor else 0
         return {
             "mode": self.config.mode,
             "vaultId": self.config.vault_id,
             "cursor": dict(cursor) if cursor else None,
-            "outbox": {"pending": self.pending_count(), "retrying": failed},
-            "healthy": failed == 0,
+            "outbox": {"pending": self.pending_count(), "retrying": failed, "quarantined": quarantined},
+            "healthy": failed == 0 and quarantined == 0 and rejected == 0,
         }
 
     def search(self, *, query: str, scopes: list[str], purpose: str, context_token: str, limit: int = 20) -> dict:
