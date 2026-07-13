@@ -194,7 +194,7 @@ Add the env vars and hook entries. If `settings.json` already exists, merge the 
         "hooks": [
           {
             "type": "command",
-"command": "OBSIDIAN_VAULT_PATH=<PATH_TO_YOUR_VAULT> <CLAUDE_BINARY> --model <SAVE_MODEL> --permission-mode default --add-dir <PATH_TO_YOUR_VAULT> --allowedTools 'Read' 'Edit' 'Write' 'Glob' 'Grep' 'Task' 'TodoWrite' 'Skill' 'Bash(mkdir *)' -p 'Read ~/.claude/skills/obsidian-second-brain/SKILL.md and run /obsidian-save on this session.' 2>/dev/null || true",
+"command": "OBSIDIAN_VAULT_PATH=<PATH_TO_YOUR_VAULT> <CLAUDE_BINARY> --name 'obsidian-save (bg)' --model <SAVE_MODEL> --permission-mode default --add-dir <PATH_TO_YOUR_VAULT> --allowedTools 'Read' 'Edit' 'Write' 'Glob' 'Grep' 'Task' 'TodoWrite' 'Skill' 'Bash(mkdir *)' -p 'Read ~/.claude/skills/obsidian-second-brain/SKILL.md and run /obsidian-save on this session.' 2>/dev/null || true",
             "timeout": 120,
             "async": true
           },
@@ -214,6 +214,8 @@ Add the env vars and hook entries. If `settings.json` already exists, merge the 
 Replace every `<PATH_TO_REPO>` with the absolute path from Step 2, `<PATH_TO_YOUR_VAULT>` with your Obsidian vault path, `<CLAUDE_BINARY>` with what you get from `which claude`, and `<SAVE_MODEL>` with the model to run the auto-save agent on.
 
 > **Auto-save model (cost):** the Stop hook spawns a fresh headless agent on **every turn**, so the model it runs on is the single biggest recurring cost of this setup. The `/obsidian-save` task — scan the conversation, search the vault, write notes — is well within reach of a cheap model, so set `<SAVE_MODEL>` to your fastest/cheapest tier (e.g. `haiku`, or a Haiku inference-profile ARN on Bedrock) rather than the default session model. Drop the `--model` flag entirely to inherit your global default — but on an Opus default that makes the per-turn save agent expensive.
+
+> **Named save session:** the `--name 'obsidian-save (bg)'` flag labels the spawned background agent so it is identifiable in session/process listings and logs, distinct from your interactive session. Rename it freely; it is cosmetic.
 
 > **Stop-hook permissions:** the auto-save agent runs with `--permission-mode default` and an explicit `--allowedTools` allowlist (file tools, subagent `Task`, and `Bash(mkdir *)` only) rather than `--dangerously-skip-permissions`. In headless `-p` mode any tool outside the list is denied automatically, so a misfire can't run arbitrary `Bash` or touch files outside the vault. `--add-dir` grants write access to the vault path. If your global `settings.json` sets `defaultMode: bypassPermissions`, the explicit `--permission-mode default` flag is required to re-enable the allowlist for this spawned session.
 
