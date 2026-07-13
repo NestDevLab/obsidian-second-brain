@@ -41,6 +41,20 @@
       "meta": {
         "purpose": "Implement stable Markdown vault capture with cursor, outbox, and direct or AMF backends"
       }
+    },
+    {
+      "id": "obsidian-memory-client",
+      "branch": "feat/amf-memory-client",
+      "base": "origin/feat/amf-markdown-scanner",
+      "target_remote": "origin",
+      "target_branch": "feat/amf-markdown-scanner",
+      "integration_branch": "main-integration",
+      "commits": [
+        "57a0bc6aeec14ab75ffdc018893c2313965a9796"
+      ],
+      "meta": {
+        "purpose": "Add contextual search, memory proposals, and selected PAM projections to the Obsidian client"
+      }
     }
   ],
   "syncwheel_tracking": "git-tracked",
