@@ -122,7 +122,9 @@ python3 -m obsidian_amf drain --vault /path/to/vault --vault-id vault-personal
 Equivalent settings are available as `OBSIDIAN_VAULT_PATH`,
 `OBSIDIAN_AMF_VAULT_ID`, `OBSIDIAN_AMF_MODE`, `OBSIDIAN_AMF_URL`,
 `OBSIDIAN_AMF_TOKEN`, `OBSIDIAN_AMF_STATE_DB`, `OBSIDIAN_AMF_DIRECT_DB`,
-`OBSIDIAN_AMF_SOURCE_INSTANCE`, and `OBSIDIAN_AMF_ACTOR`. There is no automatic
+`OBSIDIAN_AMF_SOURCE_INSTANCE`, `OBSIDIAN_AMF_ACTOR`,
+`OBSIDIAN_AMF_CONTEXT_KEY_RING`, `OBSIDIAN_AMF_POLICY_REVISION`,
+`OBSIDIAN_AMF_CONTEXT_RUNTIME`, and `OBSIDIAN_AMF_CONTEXT_PROFILE`. There is no automatic
 provider fallback: a failed AMF delivery remains pending until a later `drain`.
 
 ### Search, propose, and project
@@ -133,13 +135,20 @@ snippets. Shadow search returns the direct result as authoritative plus an AMF
 diagnostic result and an ID comparison. AMF context tokens are purpose-bound;
 obtain one through the normal runtime integration and keep it out of files.
 
+AMF context tokens are short-lived and bound to the exact query. For normal
+operation, configure the actor-specific key ring and policy revision delivered
+by the AMF provisioner; the client signs each request locally and never persists
+the resulting token. `--context-token` remains available only for an already
+request-bound one-shot token.
+
 ```bash
 # Standalone document search
 python3 -m obsidian_amf search --vault /path/to/vault \
   --vault-id vault-personal --mode standalone --query "SQLite decision"
 
 # Active combined PAM + document search
-export OBSIDIAN_AMF_CONTEXT_TOKEN='...'
+export OBSIDIAN_AMF_CONTEXT_KEY_RING=/private/obsidian/context-key-ring.json
+export OBSIDIAN_AMF_POLICY_REVISION='policy-production-v1'
 python3 -m obsidian_amf search --vault /path/to/vault \
   --vault-id vault-personal --mode active --amf-url https://memory.example \
   --query "SQLite decision" --scope shared:global

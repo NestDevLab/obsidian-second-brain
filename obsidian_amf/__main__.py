@@ -24,6 +24,10 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--mode", choices=("standalone", "shadow", "active"), default=os.environ.get("OBSIDIAN_AMF_MODE", "standalone"))
     result.add_argument("--amf-url", default=os.environ.get("OBSIDIAN_AMF_URL"))
     result.add_argument("--context-token", default=os.environ.get("OBSIDIAN_AMF_CONTEXT_TOKEN"))
+    result.add_argument("--context-key-ring", default=os.environ.get("OBSIDIAN_AMF_CONTEXT_KEY_RING"))
+    result.add_argument("--policy-revision", default=os.environ.get("OBSIDIAN_AMF_POLICY_REVISION"))
+    result.add_argument("--context-runtime", default=os.environ.get("OBSIDIAN_AMF_CONTEXT_RUNTIME", "obsidian"))
+    result.add_argument("--context-profile", default=os.environ.get("OBSIDIAN_AMF_CONTEXT_PROFILE", "default"))
     result.add_argument("--query")
     result.add_argument("--scope", action="append", dest="scopes", default=[])
     result.add_argument("--purpose", default="operator_review")
@@ -77,6 +81,10 @@ def main() -> int:
         mode=args.mode,
         amf_url=args.amf_url,
         amf_token=os.environ.get("OBSIDIAN_AMF_TOKEN"),
+        context_key_ring=Path(args.context_key_ring).expanduser().resolve() if args.context_key_ring else None,
+        policy_revision=args.policy_revision,
+        context_runtime=args.context_runtime,
+        context_profile=args.context_profile,
     )
     with ObsidianDocumentBridge(config) as bridge:
         if args.command == "scan":
@@ -88,8 +96,8 @@ def main() -> int:
         elif args.command == "search":
             if not args.query:
                 raise SystemExit("--query is required")
-            if args.mode != "standalone" and (not args.scopes or not args.context_token):
-                raise SystemExit("--scope and --context-token are required outside standalone mode")
+            if args.mode != "standalone" and (not args.scopes or not (args.context_token or args.context_key_ring)):
+                raise SystemExit("--scope and either --context-token or --context-key-ring are required outside standalone mode")
             result = bridge.search(query=args.query, scopes=args.scopes, purpose=args.purpose,
                                    context_token=args.context_token or "", limit=args.limit)
         elif args.command == "propose":

@@ -3,7 +3,7 @@ name: obsidian-memory
 description: Operate the Obsidian standalone or Agent Memory Fabric document client: scan, drain, check health, search, propose, and manage selected PAM projections.
 metadata:
   author: Yehonal
-  version: "0.1"
+  version: "0.2"
 ---
 
 # Obsidian memory
@@ -14,8 +14,11 @@ Run from this skill directory:
 scripts/obsidian-memory <command> [options]
 ```
 
-Use an explicit vault and vault ID from the user or environment; never guess either. Tokens belong
-in `OBSIDIAN_AMF_TOKEN` and `OBSIDIAN_AMF_CONTEXT_TOKEN`: do not print or persist them.
+Use an explicit vault and vault ID from the user or environment; never guess either. Bearers belong
+in `OBSIDIAN_AMF_TOKEN`: do not print or persist them. Active/shadow recall should use an owner-only
+actor key ring in `OBSIDIAN_AMF_CONTEXT_KEY_RING` plus `OBSIDIAN_AMF_POLICY_REVISION`; the client
+then issues a short-lived token bound to each exact request. A literal `OBSIDIAN_AMF_CONTEXT_TOKEN`
+is only valid for its original one-shot query and must never be reused as durable configuration.
 
 ## Operations
 

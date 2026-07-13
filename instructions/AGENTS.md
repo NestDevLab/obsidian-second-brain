@@ -30,6 +30,9 @@ dependency. Follow the public architecture contract in
   outbox was delivered.
 - Use `search` for direct SQLite or AMF contextual recall. In `shadow` mode the
   direct result is authoritative and AMF failure is diagnostic only.
+- For AMF search, prefer the actor-specific owner-only context key ring and
+  policy revision. A literal context token is short-lived, bound to one exact
+  request, and must not be reused as configuration.
 - `propose` queues a complete PAM-compatible proposal; it never writes canonical
   memory directly.
 - Run `project` only after an explicit selection. Managed projections are active

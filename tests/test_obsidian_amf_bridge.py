@@ -1,13 +1,17 @@
+import base64
+import hashlib
+import hmac
 import json
 import os
 import sqlite3
 import tempfile
 import threading
 import unittest
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from obsidian_amf import BridgeConfig, ObsidianDocumentBridge, ProjectionWriter
+from obsidian_amf import BridgeConfig, ContextSigner, ObsidianDocumentBridge, ProjectionWriter
 
 
 class RecordingProvider:
@@ -225,6 +229,107 @@ class ObsidianDocumentBridgeTests(unittest.TestCase):
         proposal_request = received[2]
         self.assertEqual(proposal_request[1], "/v2/memory/proposals")
         self.assertEqual(proposal_request[2]["Idempotency-Key"], "proposal-key")
+
+    def test_context_signer_binds_exact_query_scope_vault_and_policy(self):
+        key = bytes(range(32))
+        ring = self.root / "context-key-ring.json"
+        ring.write_text(json.dumps({
+            "currentKeyVersion": "ctx-obsidian-test-v1",
+            "keys": {"ctx-obsidian-test-v1": base64.b64encode(key).decode("ascii")},
+        }), encoding="utf-8")
+        ring.chmod(0o600)
+        signer = ContextSigner(
+            ring, actor="person:test-owner", policy_revision="policy-test",
+            vault_id="vault-test", runtime="obsidian", profile="canary",
+            clock=lambda: datetime(2026, 7, 13, 12, 0, tzinfo=timezone.utc),
+            random_bytes=lambda size: b"n" * size,
+        )
+        request = {
+            "query": "SQLite decision", "scopes": ["domain:notes"],
+            "vaultIds": ["vault-test"], "purpose": "operator_review", "limit": 7,
+        }
+        token = signer.issue_context_search(request)
+        encoded, signature = token.split(".")
+        expected_signature = base64.urlsafe_b64encode(
+            hmac.new(key, encoded.encode(), hashlib.sha256).digest()
+        ).rstrip(b"=").decode("ascii")
+        self.assertEqual(signature, expected_signature)
+        payload = json.loads(base64.urlsafe_b64decode(encoded + "=="))
+        self.assertEqual(payload["actor"], "person:test-owner")
+        self.assertEqual(payload["canonicalScopes"], ["domain:notes"])
+        self.assertEqual(payload["keyVersion"], "ctx-obsidian-test-v1")
+        self.assertEqual(payload["issuedAt"], "2026-07-13T12:00:00.000Z")
+        self.assertEqual(payload["expiresAt"], "2026-07-13T12:01:00.000Z")
+        canonical_request = json.dumps({
+            "operation": "context_search", "query": "SQLite decision",
+            "scopes": ["domain:notes"], "vaultIds": ["vault-test"], "limit": 7,
+        }, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        self.assertEqual(payload["requestDigest"], hashlib.sha256(canonical_request.encode()).hexdigest())
+
+    def test_active_search_issues_a_fresh_request_bound_token(self):
+        received = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers["Content-Length"])
+                payload = json.loads(self.rfile.read(length))
+                received.append((self.path, dict(self.headers), payload))
+                body = json.dumps({"ok": True, "data": {"items": [], "nextCursor": None}}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, _format, *_args):
+                pass
+
+        key = b"k" * 32
+        ring = self.root / "context-key-ring.json"
+        ring.write_text(json.dumps({
+            "currentKeyVersion": "ctx-obsidian-test-v1",
+            "keys": {"ctx-obsidian-test-v1": base64.b64encode(key).decode("ascii")},
+        }), encoding="utf-8")
+        ring.chmod(0o600)
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            config = BridgeConfig(
+                vault_path=self.vault, state_db=self.root / "state.sqlite",
+                vault_id="vault-test", source_instance="obsidian-test", actor="person:test-owner",
+                mode="active", amf_url=f"http://127.0.0.1:{server.server_port}", amf_token="test-token",
+                context_key_ring=ring, policy_revision="policy-test", context_profile="canary",
+            )
+            with ObsidianDocumentBridge(config) as bridge:
+                bridge.search(
+                    query="fresh query", scopes=["domain:notes"], purpose="operator_review",
+                    context_token="", limit=5,
+                )
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+        path, headers, payload = received[0]
+        self.assertEqual(path, "/v2/context/search")
+        self.assertEqual(payload["query"], "fresh query")
+        token = headers["X-Amf-Context-Token"]
+        decoded = json.loads(base64.urlsafe_b64decode(token.split(".")[0] + "=="))
+        self.assertEqual(decoded["purpose"], "operator_review")
+        self.assertEqual(decoded["canonicalScopes"], ["domain:notes"])
+
+    def test_context_signer_rejects_permissive_or_symlinked_key_material(self):
+        key = base64.b64encode(b"k" * 32).decode("ascii")
+        ring = self.root / "ring.json"
+        ring.write_text(json.dumps({"currentKeyVersion": "ctx-v1", "keys": {"ctx-v1": key}}), encoding="utf-8")
+        ring.chmod(0o644)
+        with self.assertRaisesRegex(ValueError, "context_key_ring_unsafe"):
+            ContextSigner(ring, actor="person:test", policy_revision="policy-test", vault_id="vault-test")
+        ring.chmod(0o600)
+        linked_parent = self.root / "linked"
+        linked_parent.symlink_to(self.root, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "context_key_ring_unsafe"):
+            ContextSigner(linked_parent / "ring.json", actor="person:test", policy_revision="policy-test", vault_id="vault-test")
 
     def test_shadow_delivers_independently_to_both_providers(self):
         (self.vault / "Shadow.md").write_text("compare", encoding="utf-8")

@@ -27,6 +27,7 @@ hooks/
   postcompact.hook.example.json → ready-to-paste JSON snippet
 obsidian_amf/
   bridge.py                     → revisioned scanner, outbox, providers, health
+  context_signer.py             → short-lived tokens bound to exact recall requests
   projections.py                → explicit managed PAM-to-vault projections
   __main__.py                   → standalone CLI
 tests/
@@ -38,6 +39,10 @@ SQLite corpus are runtime state under `.amf/` by default and must not be
 committed. `standalone` owns direct SQLite, `active` delivers to AMF, and
 `shadow` keeps direct SQLite authoritative while AMF delivery is observed
 independently.
+
+AMF contextual recall never relies on a reusable static context token. An
+actor-specific owner-only key ring signs each exact query locally; the bearer,
+policy revision, scopes and vault ACL remain independently enforced by AMF.
 
 Projection writes are the only AMF bridge operation that changes the vault.
 They require an explicit `project` command, accept active plaintext PAM records
