@@ -2,17 +2,15 @@
 
 ## What this repo is
 
-A Claude Code hook layer that wires the [obsidian-second-brain skill](https://github.com/eugeniughelbur/obsidian-second-brain) into every session automatically. This repo is **pure config/docs** — no app code, no build, no tests, no CI.
+A portable hook and client layer that wires the [obsidian-second-brain skill](https://github.com/eugeniughelbur/obsidian-second-brain) into agent sessions. It also contains an optional, dependency-free Agent Memory Fabric (AMF) document bridge.
 
-The upstream skill at `~/.claude/skills/obsidian-second-brain/` provides the slash commands; this repo provides the hooks and `settings.json`.
+The upstream skill at `~/.claude/skills/obsidian-second-brain/` provides the slash commands. This repo provides hooks, portable instructions, and the standalone/AMF adapter without vendoring the upstream skill.
 
 ## Commands
 
-There is no build, test, or lint. `README.md` is the only source file maintained here (the hooks in `hooks/` are reference copies for setup, not called from the repo at runtime).
-
 ```
-# Verify the README renders (open in browser or markdown preview)
-# No automated verification steps exist
+python3 -m unittest discover -s tests -v
+python3 -m obsidian_amf --help
 ```
 
 ## Architecture
@@ -27,7 +25,18 @@ hooks/
   validate-ai-first.sh    → PostToolUse(Write|Edit): AI-first rule enforcement
   *.hook.yaml             → platform-neutral hook specs
   postcompact.hook.example.json → ready-to-paste JSON snippet
+obsidian_amf/
+  bridge.py                     → revisioned scanner, outbox, providers, health
+  __main__.py                   → standalone CLI
+tests/
+  test_obsidian_amf_bridge.py   → deterministic lifecycle and outage tests
 ```
+
+The bridge only reads Markdown from the vault. Its cursor/outbox and direct
+SQLite corpus are runtime state under `.amf/` by default and must not be
+committed. `standalone` owns direct SQLite, `active` delivers to AMF, and
+`shadow` keeps direct SQLite authoritative while AMF delivery is observed
+independently.
 
 ## Non-obvious facts
 
@@ -44,6 +53,7 @@ The other two (`load_vault_context.py`, `validate-ai-first.sh`) run from their r
 
 ### Dependencies
 - **Python 3 (stdlib only)** + **jq** — all hook scripts
+- **Python 3.10+ stdlib** — AMF bridge and tests
 - **ollama** + `nomic-embed-text` model — vector search (falls back to grep if absent)
 - **Claude Code** CLI (`claude`) — the `Stop` hook and `PostCompact` agent
 
@@ -71,4 +81,4 @@ This repo moved from `guidodl/obsidian-second-brain` to `NestDevLab/obsidian-sec
 - Version tags: semver (`v1.0.0`, `v1.1.0`, `v1.2.0`) with matching GitHub Releases
 - Branch naming: loose — `feat/*`, `Fix-*`, `fix/*` seen in history
 - PRs merge to `main`, no branch protection rules
-- No `CLAUDE.md` or other AI instruction file exists in this repo
+- `AGENTS.md` is the shared source of truth; `CLAUDE.md` adds Claude-specific setup rules

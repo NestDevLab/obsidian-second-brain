@@ -73,6 +73,52 @@ End of session
 - The upstream Obsidian skill remains a separate dependency and is not modified by this package.
 - AMF integration must remain optional, modular, and backend-agnostic so the local-only workflow continues to work.
 
+## Optional AMF document bridge
+
+`obsidian_amf` is a read-only vault scanner with a revisioned identity registry
+and durable delivery outbox. It never edits Markdown. Runtime databases default
+to the vault-local `.amf/` directory, which is excluded from capture and Git.
+
+The bridge supports three explicit modes:
+
+| Mode | Authoritative provider | Delivery |
+|---|---|---|
+| `standalone` | Obsidian direct SQLite | Local document corpus only |
+| `shadow` | Obsidian direct SQLite | Local corpus plus independent AMF diagnostic delivery |
+| `active` | AMF | AMF document API only |
+
+Each scan detects creates, content changes, evidence-backed renames, restores,
+and deletes. A stable `documentId` survives renames; every change receives a
+monotonic revision and AMF-compatible idempotency key. Events are committed to
+the outbox before delivery, so an unavailable backend does not block vault work
+or lose changes.
+
+```bash
+# Standalone SQLite
+python3 -m obsidian_amf scan \
+  --vault /path/to/vault \
+  --vault-id vault-personal \
+  --mode standalone
+
+# AMF-backed capture (keep the bearer token in the environment)
+export OBSIDIAN_AMF_TOKEN='...'
+python3 -m obsidian_amf scan \
+  --vault /path/to/vault \
+  --vault-id vault-personal \
+  --mode active \
+  --amf-url https://memory.example
+
+# Inspect the cursor and retry queue, or retry without rescanning
+python3 -m obsidian_amf status --vault /path/to/vault --vault-id vault-personal
+python3 -m obsidian_amf drain --vault /path/to/vault --vault-id vault-personal
+```
+
+Equivalent settings are available as `OBSIDIAN_VAULT_PATH`,
+`OBSIDIAN_AMF_VAULT_ID`, `OBSIDIAN_AMF_MODE`, `OBSIDIAN_AMF_URL`,
+`OBSIDIAN_AMF_TOKEN`, `OBSIDIAN_AMF_STATE_DB`, `OBSIDIAN_AMF_DIRECT_DB`,
+`OBSIDIAN_AMF_SOURCE_INSTANCE`, and `OBSIDIAN_AMF_ACTOR`. There is no automatic
+provider fallback: a failed AMF delivery remains pending until a later `drain`.
+
 ## Setup
 
 Full setup takes about 10 minutes. You need: [Claude Code](https://claude.ai/code) installed, [Obsidian](https://obsidian.md) with an existing vault, macOS (paths below assume macOS; adjust for Linux).

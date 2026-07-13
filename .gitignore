@@ -1,4 +1,5 @@
 __pycache__/
+.amf/
 
 # syncwheel managed metadata
 .syncwheel/ledger/
