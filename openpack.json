@@ -6,10 +6,6 @@
     {
       "type": "instructions",
       "path": "instructions/AGENTS.md"
-    },
-    {
-      "type": "hooks",
-      "path": "hooks"
     }
   ]
 }

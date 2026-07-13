@@ -68,7 +68,7 @@ End of session
 ## Development and packaging
 
 - [Syncwheel](https://github.com/NestDevLab/syncwheel) governs Git branches, worktrees, stacks, and pull-request delivery through `.syncwheel/manifest.json`.
-- `openpack.json` declares the portable instructions and hooks distributed by [Agentwheel](https://github.com/NestDevLab/agentwheel).
+- `openpack.json` declares the portable agent instructions distributed by [Agentwheel](https://github.com/NestDevLab/agentwheel). Runtime hook packaging will be added with the AMF adapter instead of treating the existing scripts as semantic hook JSON.
 - Runtime harness directories are generated installation targets. Changes belong in this repository first, followed by an Agentwheel plan and dry-run.
 - The upstream Obsidian skill remains a separate dependency and is not modified by this package.
 - AMF integration must remain optional, modular, and backend-agnostic so the local-only workflow continues to work.
