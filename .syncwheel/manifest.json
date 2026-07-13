@@ -77,7 +77,9 @@
       "target_remote": "origin",
       "target_branch": "feat/amf-openpack-skill",
       "integration_branch": "main-integration",
-      "commits": [],
+      "commits": [
+        "29fcc18077e597578b5ffc052da03e64f8266b59"
+      ],
       "meta": {
         "purpose": "Harden no-follow vault reads, content bounds, state permissions, and outbox validation"
       }
