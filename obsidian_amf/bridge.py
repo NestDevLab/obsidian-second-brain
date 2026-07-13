@@ -135,6 +135,27 @@ class DirectSqliteProvider:
                 values[1:],
             )
 
+    def search(self, query: str, limit: int = 20) -> dict:
+        if not query or not 1 <= limit <= 100:
+            raise ValueError("search_invalid")
+        rows = self.connection.execute(
+            """SELECT document_id,revision,vault_id,path,text FROM documents
+               WHERE tombstone=0 AND (instr(lower(path),lower(?))>0 OR instr(lower(coalesce(text,'')),lower(?))>0)
+               ORDER BY path,document_id LIMIT ?""",
+            (query, query, limit),
+        ).fetchall()
+        items = []
+        for rank, row in enumerate(rows, 1):
+            text = row["text"] or ""
+            match = text.lower().find(query.lower())
+            start = max(0, match - 200) if match >= 0 else 0
+            snippet = ("…" if start else "") + text[start:start + 600] + ("…" if start + 600 < len(text) else "")
+            items.append({
+                "kind": "document", "sourceRank": rank, "id": row["document_id"],
+                "revision": row["revision"], "vaultId": row["vault_id"], "path": row["path"], "snippet": snippet,
+            })
+        return {"items": items, "nextCursor": None, "sources": {"memory": 0, "document": len(items)}}
+
     def close(self) -> None:
         self.connection.close()
 
@@ -147,27 +168,36 @@ class AmfHttpProvider:
         self.token = token
         self.timeout_seconds = timeout_seconds
 
-    def deliver(self, operation: str, payload: dict) -> None:
-        document_id = payload["document"]["documentId"]
-        method = "DELETE" if operation == "delete" else "PUT"
+    def _request(self, method: str, path: str, payload: dict, headers: dict[str, str] | None = None) -> dict:
         request = urllib.request.Request(
-            f"{self.base_url}/v2/documents/{document_id}",
-            data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
-            method=method,
-            headers={
-                "Content-Type": "application/json",
-                "Idempotency-Key": payload["idempotencyKey"],
-                **({"Authorization": f"Bearer {self.token}"} if self.token else {}),
-            },
+            f"{self.base_url}{path}", data=json.dumps(payload, separators=(",", ":")).encode("utf-8"), method=method,
+            headers={"Content-Type": "application/json", **({"Authorization": f"Bearer {self.token}"} if self.token else {}), **(headers or {})},
         )
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+                body = json.loads(response.read() or b"{}")
                 if not 200 <= response.status < 300:
                     raise RuntimeError(f"amf_http_{response.status}")
+                if body.get("ok") is False:
+                    raise RuntimeError(f"amf_{body.get('error', {}).get('code', 'request_failed')}")
+                return body.get("data", body)
         except urllib.error.HTTPError as error:
             raise RuntimeError(f"amf_http_{error.code}") from error
         except urllib.error.URLError as error:
             raise RuntimeError("amf_unavailable") from error
+
+    def deliver(self, operation: str, payload: dict) -> None:
+        document_id = payload["document"]["documentId"]
+        method = "DELETE" if operation == "delete" else "PUT"
+        self._request(method, f"/v2/documents/{document_id}", payload, {"Idempotency-Key": payload["idempotencyKey"]})
+
+    def context_search(self, *, query: str, scopes: list[str], vault_ids: list[str], purpose: str,
+                       context_token: str, limit: int = 20) -> dict:
+        payload = {"query": query, "scopes": scopes, "vaultIds": vault_ids, "purpose": purpose, "limit": limit}
+        return self._request("POST", "/v2/context/search", payload, {"X-AMF-Context-Token": context_token})
+
+    def propose(self, proposal: dict, idempotency_key: str) -> dict:
+        return self._request("POST", "/v2/memory/proposals", proposal, {"Idempotency-Key": idempotency_key})
 
 
 class ObsidianDocumentBridge:
@@ -468,6 +498,39 @@ class ObsidianDocumentBridge:
             "outbox": {"pending": self.pending_count(), "retrying": failed},
             "healthy": failed == 0,
         }
+
+    def search(self, *, query: str, scopes: list[str], purpose: str, context_token: str, limit: int = 20) -> dict:
+        if self.config.mode == "standalone":
+            return self.providers["direct"].search(query, limit)
+        if self.config.mode == "active":
+            return self.providers["amf"].context_search(
+                query=query, scopes=scopes, vault_ids=[self.config.vault_id], purpose=purpose,
+                context_token=context_token, limit=limit,
+            )
+        direct = self.providers["direct"].search(query, limit)
+        try:
+            amf = self.providers["amf"].context_search(
+                query=query, scopes=scopes, vault_ids=[self.config.vault_id], purpose=purpose,
+                context_token=context_token, limit=limit,
+            )
+            degraded = False
+        except RuntimeError as error:
+            amf = {"items": [], "error": str(error)[:256]}
+            degraded = True
+        return {
+            "mode": "shadow", "authoritative": direct, "diagnostic": amf,
+            "degraded": degraded,
+            "comparison": {
+                "directIds": [item["id"] for item in direct.get("items", [])],
+                "amfIds": [item["id"] for item in amf.get("items", [])],
+            },
+        }
+
+    def propose(self, proposal: dict, idempotency_key: str) -> dict:
+        provider = self.providers.get("amf")
+        if provider is None:
+            raise RuntimeError("amf_required")
+        return provider.propose(proposal, idempotency_key)
 
     def close(self) -> None:
         for provider in self.providers.values():

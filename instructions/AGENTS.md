@@ -22,3 +22,16 @@ dependency. Follow the public architecture contract in
   credentials, or environment-specific topology in public artifacts.
 - Add deterministic tests for behavioral changes; keep documentation aligned
   with the actual supported backends and synchronization direction.
+
+## AMF client behavior
+
+- Use `python3 -m obsidian_amf scan|drain|status` for revisioned document
+  capture and delivery health; never treat a successful scan as proof that the
+  outbox was delivered.
+- Use `search` for direct SQLite or AMF contextual recall. In `shadow` mode the
+  direct result is authoritative and AMF failure is diagnostic only.
+- `propose` queues a complete PAM-compatible proposal; it never writes canonical
+  memory directly.
+- Run `project` only after an explicit selection. Managed projections are active
+  plaintext PAM records under `.amf/records/`; never copy sealed claims or edit
+  those files as if they were canonical memory.
