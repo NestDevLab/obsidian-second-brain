@@ -2,6 +2,8 @@
 
 My personal configuration layer — hooks and Claude Code settings — built on top of the [obsidian-second-brain skill](https://github.com/eugeniughelbur/obsidian-second-brain) by [@eugeniughelbur](https://github.com/eugeniughelbur).
 
+This project can also act as an optional client of [Agent Memory Fabric (AMF)](https://github.com/NestDevLab/agent-memory-fabric). Obsidian remains the human-facing Markdown workspace: all vault content may be ingested into AMF, while only selected AMF memories are projected back into the vault. The integration is additive; the standalone local backend remains supported. See the [Obsidian integration architecture](https://github.com/NestDevLab/agent-memory-fabric/blob/main/docs/obsidian-second-brain.md) for boundaries, data flow, memory layers, and backend choices.
+
 ## How it works
 
 The core skill lives at `~/.claude/skills/obsidian-second-brain/` and is installed via the upstream repo's [install instructions](https://github.com/eugeniughelbur/obsidian-second-brain#install). It provides 40+ slash commands (`/obsidian-save`, `/obsidian-daily`, `/obsidian-ingest`, etc.) that Claude Code can invoke to read and write an Obsidian vault.
@@ -62,6 +64,14 @@ End of session
 | File | What it does |
 |---|---|
 | `update-obsidian-skill.sh` | Safely updates the upstream skill in `~/.claude/skills/obsidian-second-brain` to the latest release while preserving local overrides (e.g. a customized `load_vault_context.py`). Backs up local changes, stashes them, fast-forwards to the latest release tag (resolved via `gh release`, since the upstream repo's tag scheme is misleading), then re-applies the overrides. Pass `main` to target the bleeding-edge tip instead of the latest release. Use this instead of the upstream `update.sh`, whose plain `git pull` conflicts on local overrides. |
+
+## Development and packaging
+
+- [Syncwheel](https://github.com/NestDevLab/syncwheel) governs Git branches, worktrees, stacks, and pull-request delivery through `.syncwheel/manifest.json`.
+- `openpack.json` declares the portable agent instructions distributed by [Agentwheel](https://github.com/NestDevLab/agentwheel). Runtime hook packaging will be added with the AMF adapter instead of treating the existing scripts as semantic hook JSON.
+- Runtime harness directories are generated installation targets. Changes belong in this repository first, followed by an Agentwheel plan and dry-run.
+- The upstream Obsidian skill remains a separate dependency and is not modified by this package.
+- AMF integration must remain optional, modular, and backend-agnostic so the local-only workflow continues to work.
 
 ## Setup
 

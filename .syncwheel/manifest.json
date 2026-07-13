@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "defaults": {
+    "canonical_remote": "origin",
+    "publication_remote": "origin",
+    "base_branch": "main",
+    "base_ref": "origin/main"
+  },
+  "integration": {
+    "branch": "main-integration",
+    "base": "origin/main",
+    "strategy": "cherry-pick",
+    "stacks": []
+  },
+  "stacks": [
+    {
+      "id": "amf-foundation",
+      "branch": "chore/amf-foundation",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "57a52386d579df72ad4f60ef50ee38e99dea5d0d",
+        "96d71d123f88053472f4e2efec02ede93bf147f2"
+      ],
+      "meta": {
+        "purpose": "Bootstrap Syncwheel, Agentwheel OpenPack, and AMF documentation links"
+      }
+    }
+  ],
+  "syncwheel_tracking": "git-tracked",
+  "syncwheel_worktree_root": "var/syncwheel"
+}
