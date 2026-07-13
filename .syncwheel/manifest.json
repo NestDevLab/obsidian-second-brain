@@ -91,7 +91,9 @@
       "target_remote": "origin",
       "target_branch": "main",
       "integration_branch": "main-integration",
-      "commits": [],
+      "commits": [
+        "204eb7c32a7746510e6110bd03bf327ccb11f243"
+      ],
       "meta": {
         "purpose": "Issue request-bound AMF context tokens for Obsidian recall"
       }
