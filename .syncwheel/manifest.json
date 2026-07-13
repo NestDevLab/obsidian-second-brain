@@ -55,6 +55,20 @@
       "meta": {
         "purpose": "Add contextual search, memory proposals, and selected PAM projections to the Obsidian client"
       }
+    },
+    {
+      "id": "obsidian-openpack-skill",
+      "branch": "feat/amf-openpack-skill",
+      "base": "origin/feat/amf-memory-client",
+      "target_remote": "origin",
+      "target_branch": "feat/amf-memory-client",
+      "integration_branch": "main-integration",
+      "commits": [
+        "06dd02d47921990741fe4f5162fa1e320d9b0b15"
+      ],
+      "meta": {
+        "purpose": "Package the Obsidian AMF client as a cross-runtime Agentwheel skill"
+      }
     }
   ],
   "syncwheel_tracking": "git-tracked",
