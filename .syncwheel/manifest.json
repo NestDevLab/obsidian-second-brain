@@ -69,6 +69,18 @@
       "meta": {
         "purpose": "Package the Obsidian AMF client as a cross-runtime Agentwheel skill"
       }
+    },
+    {
+      "id": "obsidian-bridge-hardening",
+      "branch": "feat/amf-bridge-hardening",
+      "base": "origin/feat/amf-openpack-skill",
+      "target_remote": "origin",
+      "target_branch": "feat/amf-openpack-skill",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "meta": {
+        "purpose": "Harden no-follow vault reads, content bounds, state permissions, and outbox validation"
+      }
     }
   ],
   "syncwheel_tracking": "git-tracked",
