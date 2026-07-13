@@ -119,6 +119,42 @@ Equivalent settings are available as `OBSIDIAN_VAULT_PATH`,
 `OBSIDIAN_AMF_SOURCE_INSTANCE`, and `OBSIDIAN_AMF_ACTOR`. There is no automatic
 provider fallback: a failed AMF delivery remains pending until a later `drain`.
 
+### Search, propose, and project
+
+Standalone search reads the direct SQLite corpus. Active search calls AMF
+`context_search`, which can return both canonical memories and bounded document
+snippets. Shadow search returns the direct result as authoritative plus an AMF
+diagnostic result and an ID comparison. AMF context tokens are purpose-bound;
+obtain one through the normal runtime integration and keep it out of files.
+
+```bash
+# Standalone document search
+python3 -m obsidian_amf search --vault /path/to/vault \
+  --vault-id vault-personal --mode standalone --query "SQLite decision"
+
+# Active combined PAM + document search
+export OBSIDIAN_AMF_CONTEXT_TOKEN='...'
+python3 -m obsidian_amf search --vault /path/to/vault \
+  --vault-id vault-personal --mode active --amf-url https://memory.example \
+  --query "SQLite decision" --scope shared:global
+
+# Queue a complete amf-memory/v1 proposal; this never writes PAM directly
+python3 -m obsidian_amf propose --vault /path/to/vault \
+  --vault-id vault-personal --mode active --amf-url https://memory.example \
+  --input proposal.json --idempotency-key operator-selection-0001
+```
+
+Projection is intentionally separate from capture. `project` accepts one
+already selected, active PAM record with a plaintext claim and writes a managed
+note under `.amf/records/`; sealed records are rejected rather than decrypted by
+the client. Revisions are monotonic and writes are atomic/no-follow. `unproject`
+removes only that managed projection and never changes canonical PAM.
+
+```bash
+python3 -m obsidian_amf project --vault /path/to/vault --input selected-memory.json
+python3 -m obsidian_amf unproject --vault /path/to/vault --memory-id mem_example123
+```
+
 ## Setup
 
 Full setup takes about 10 minutes. You need: [Claude Code](https://claude.ai/code) installed, [Obsidian](https://obsidian.md) with an existing vault, macOS (paths below assume macOS; adjust for Linux).

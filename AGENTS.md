@@ -27,6 +27,7 @@ hooks/
   postcompact.hook.example.json → ready-to-paste JSON snippet
 obsidian_amf/
   bridge.py                     → revisioned scanner, outbox, providers, health
+  projections.py                → explicit managed PAM-to-vault projections
   __main__.py                   → standalone CLI
 tests/
   test_obsidian_amf_bridge.py   → deterministic lifecycle and outage tests
@@ -37,6 +38,12 @@ SQLite corpus are runtime state under `.amf/` by default and must not be
 committed. `standalone` owns direct SQLite, `active` delivers to AMF, and
 `shadow` keeps direct SQLite authoritative while AMF delivery is observed
 independently.
+
+Projection writes are the only AMF bridge operation that changes the vault.
+They require an explicit `project` command, accept active plaintext PAM records
+only, and write exclusively under the managed `.amf/records/` namespace using
+directory-relative no-follow operations. The scanner excludes that namespace,
+preventing projection feedback loops.
 
 ## Non-obvious facts
 
