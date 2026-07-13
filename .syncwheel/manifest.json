@@ -27,6 +27,20 @@
       "meta": {
         "purpose": "Bootstrap Syncwheel, Agentwheel OpenPack, and AMF documentation links"
       }
+    },
+    {
+      "id": "obsidian-markdown-scanner",
+      "branch": "feat/amf-markdown-scanner",
+      "base": "origin/chore/amf-foundation",
+      "target_remote": "origin",
+      "target_branch": "chore/amf-foundation",
+      "integration_branch": "main-integration",
+      "commits": [
+        "3755bd14e8df4d1c234a09046c5ac67e75e27ace"
+      ],
+      "meta": {
+        "purpose": "Implement stable Markdown vault capture with cursor, outbox, and direct or AMF backends"
+      }
     }
   ],
   "syncwheel_tracking": "git-tracked",
