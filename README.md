@@ -309,6 +309,27 @@ graphify advertises a ~71.5× reduction (BFS subgraph ≈ 2k tokens vs. ~123k na
 
 graphify's `--obsidian --obsidian-dir <vault>` writes code-graph nodes (functions, modules, dependencies) into a vault as wikilinked notes. This repo's vector search then surfaces those code concepts alongside work notes in the same semantic query — code structure and work context unified in one search. Run graphify after major code changes, write the nodes into the vault, and let the `UserPromptSubmit` hook find them contextually.
 
+## On "Stop Calling It Memory"
+
+[*Stop Calling It Memory: The Problem With Markdown-as-Database*](https://limitededitionjonathan.substack.com/p/stop-calling-it-memory-the-problem) argues that treating a folder of markdown as a memory system is a cargo-cult mistake: markdown can't query, can't traverse relationships, doesn't scale, has no schema, and has no concurrent access. The prescription is to put structured memory in a real database (SQLite) and relationships in a graph DB.
+
+The critique is aimed at setups that load raw markdown into context and hope. **This repo already sits on the database side of that line** — the point the article is making. The separation it argues for is the design here: `_CLAUDE.md` is a *config file* loaded once (the article's own distinction), and the actual retrieval runs against a SQLite store of `nomic-embed-text` embeddings (`~/.claude/vault-index.db`), not the markdown itself.
+
+| Article's critique of "markdown as memory" | This repo |
+|---|---|
+| **No querying** — brute-force context loading | Prompts are embedded and matched by cosine similarity against a SQLite embedding store; top-K note chunks injected, not the vault (`obsidian-find-hook.py`). |
+| **Scale ceiling / token waste** | Config (`_CLAUDE.md`) loaded once at ~2.3k tokens; retrieval is top-3 chunks (~283 tokens/prompt), independent of vault size. |
+| **No schema** | Frontmatter schema enforced at write time by `validate-ai-first.sh` (`PostToolUse`), not at the DB layer. |
+| **No relationship traversal** | **Valid gap.** Links are `[[wikilinks]]`; there is no graph DB. Traversal is grep/subagent-based, not a graph query. Compose with [graphify](#comparison-vault-vector-search-vs-graphify) if you need structural traversal. |
+| **No concurrent access** | Partial. SQLite is single-writer; the Stop-hook re-index, bg-agent, and scheduled agents can contend. Fine for one user, not a multi-agent write bus. |
+
+Two honest caveats where the article's warning still bites:
+
+- **The similarity search is a full-table scan.** `obsidian-find-hook.py` loads every embedding row and computes cosine in Python on each prompt — fine at a few thousand notes, but it trades the article's "context-token ceiling" for a query-latency ceiling. A proper ANN index (`sqlite-vec`, FAISS) removes it.
+- **No relationship layer.** The graph-DB half of the article's prescription is genuinely unaddressed here; wikilinks are not a queryable graph.
+
+Bottom line: the markdown vault is the human-editable surface and the durable store of record; the SQLite embedding index is the query layer. The article's mistake-to-avoid — *querying the markdown directly* — is exactly what this repo does not do.
+
 ## Notes
 
 - `obsidian-find-hook.py`, `build_vault_index.py`, and `update-vault-index.sh` live at `~/.claude/` locally — committed here for backup and portability.
