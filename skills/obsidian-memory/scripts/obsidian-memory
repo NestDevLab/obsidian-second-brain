@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+skill_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+PYTHONPATH="$skill_dir/scripts${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m obsidian_amf "$@"
