@@ -20,7 +20,9 @@
       "target_remote": "origin",
       "target_branch": "main",
       "integration_branch": "main-integration",
-      "commits": [],
+      "commits": [
+        "57a52386d579df72ad4f60ef50ee38e99dea5d0d"
+      ],
       "meta": {
         "purpose": "Bootstrap Syncwheel, Agentwheel OpenPack, and AMF documentation links"
       }
