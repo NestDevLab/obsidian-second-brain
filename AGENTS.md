@@ -39,6 +39,9 @@ Three scripts are **copied** to `~/.claude/` during setup and run from there at 
 
 The other two (`load_vault_context.py`, `validate-ai-first.sh`) run from their repo path.
 
+### Update helper
+`update-obsidian-skill.sh` (repo root) updates the upstream skill at `~/.claude/skills/obsidian-second-brain` while preserving local overrides: it stashes local changes, fast-forwards to the latest release (resolved via `gh release view`, because the upstream repo mixes two tag schemes and version-sorting picks the wrong tag), then re-applies the overrides. Added in v1.4.0. Prefer it over the upstream `update.sh`, whose bare `git pull` conflicts on any local override.
+
 ### Dependencies
 - **Python 3 (stdlib only)** + **jq** — all hook scripts
 - **ollama** + `nomic-embed-text` model — vector search (falls back to grep if absent)

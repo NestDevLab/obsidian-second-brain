@@ -57,6 +57,12 @@ End of session
 - `hooks/postcompact.hook.example.json` — ready-to-paste JSON for `~/.claude/settings.json`
 - `hooks/validate-ai-first.hook.yaml` — platform-neutral spec for the PostToolUse validator
 
+### Scripts
+
+| File | What it does |
+|---|---|
+| `update-obsidian-skill.sh` | Safely updates the upstream skill in `~/.claude/skills/obsidian-second-brain` to the latest release while preserving local overrides (e.g. a customized `load_vault_context.py`). Backs up local changes, stashes them, fast-forwards to the latest release tag (resolved via `gh release`, since the upstream repo's tag scheme is misleading), then re-applies the overrides. Pass `main` to target the bleeding-edge tip instead of the latest release. Use this instead of the upstream `update.sh`, whose plain `git pull` conflicts on local overrides. |
+
 ## Setup
 
 Full setup takes about 10 minutes. You need: [Claude Code](https://claude.ai/code) installed, [Obsidian](https://obsidian.md) with an existing vault, macOS (paths below assume macOS; adjust for Linux).
@@ -72,6 +78,8 @@ git clone https://github.com/eugeniughelbur/obsidian-second-brain \
 ```
 
 Follow any additional install steps in the [upstream README](https://github.com/eugeniughelbur/obsidian-second-brain#install) (superpowers plugin registration, etc.).
+
+To keep the skill updated later without losing local overrides, run `./update-obsidian-skill.sh` from this repo (see [Scripts](#scripts)) rather than the upstream `update.sh`.
 
 ### Step 2 — Clone this repo
 
