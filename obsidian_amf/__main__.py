@@ -5,11 +5,38 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import stat
 import sys
 from pathlib import Path
 
 from .bridge import BridgeConfig, ObsidianDocumentBridge
 from .projections import ProjectionWriter
+
+
+def amf_token_from_environment(environment: dict[str, str] | None = None) -> str | None:
+    """Read an AMF bearer from an environment value or a protected regular file."""
+    environment = environment or os.environ
+    token = environment.get("OBSIDIAN_AMF_TOKEN")
+    token_file = environment.get("OBSIDIAN_AMF_TOKEN_FILE")
+    if token and token_file:
+        raise ValueError("amf_token_ambiguous")
+    if not token_file:
+        return token
+    descriptor = os.open(token_file, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("amf_token_file_invalid")
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            value = handle.read(8193)
+    finally:
+        os.close(descriptor)
+    if len(value) > 8192:
+        raise ValueError("amf_token_file_invalid")
+    decoded = value.decode("utf-8").rstrip("\r\n")
+    if not decoded:
+        raise ValueError("amf_token_file_empty")
+    return decoded
 
 
 def parser() -> argparse.ArgumentParser:
@@ -80,7 +107,7 @@ def main() -> int:
         actor=args.actor,
         mode=args.mode,
         amf_url=args.amf_url,
-        amf_token=os.environ.get("OBSIDIAN_AMF_TOKEN"),
+        amf_token=amf_token_from_environment(),
         context_key_ring=Path(args.context_key_ring).expanduser().resolve() if args.context_key_ring else None,
         policy_revision=args.policy_revision,
         context_runtime=args.context_runtime,
