@@ -121,11 +121,16 @@ python3 -m obsidian_amf drain --vault /path/to/vault --vault-id vault-personal
 
 Equivalent settings are available as `OBSIDIAN_VAULT_PATH`,
 `OBSIDIAN_AMF_VAULT_ID`, `OBSIDIAN_AMF_MODE`, `OBSIDIAN_AMF_URL`,
-`OBSIDIAN_AMF_TOKEN`, `OBSIDIAN_AMF_STATE_DB`, `OBSIDIAN_AMF_DIRECT_DB`,
+`OBSIDIAN_AMF_TOKEN`, `OBSIDIAN_AMF_TOKEN_FILE`, `OBSIDIAN_AMF_STATE_DB`, `OBSIDIAN_AMF_DIRECT_DB`,
 `OBSIDIAN_AMF_SOURCE_INSTANCE`, `OBSIDIAN_AMF_ACTOR`,
 `OBSIDIAN_AMF_CONTEXT_KEY_RING`, `OBSIDIAN_AMF_POLICY_REVISION`,
 `OBSIDIAN_AMF_CONTEXT_RUNTIME`, and `OBSIDIAN_AMF_CONTEXT_PROFILE`. There is no automatic
 provider fallback: a failed AMF delivery remains pending until a later `drain`.
+
+For unattended system services, prefer `OBSIDIAN_AMF_TOKEN_FILE` over a literal
+environment token. It must name a protected regular file containing only the
+bearer; setting both variables is rejected. A systemd `LoadCredential` path is
+the intended deployment mechanism.
 
 ### Search, propose, and project
 
