@@ -14,6 +14,11 @@ from .metadata import client_metadata, client_source_root
 from .projections import ProjectionWriter
 
 
+def amf_token_from_environment(environment: dict[str, str] | None = None) -> str | None:
+    """Compatibility wrapper for the hardened credential loader."""
+    return load_amf_token(environment)
+
+
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(prog="python3 -m obsidian_amf")
     result.add_argument("command", choices=(

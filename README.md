@@ -155,6 +155,11 @@ owner-only, single-link regular file with bounded UTF-8 content and never emits
 the token in metadata or status. `OBSIDIAN_AMF_TOKEN` remains compatible for
 interactive invocations and is used only when no token file is configured.
 
+For unattended system services, prefer `OBSIDIAN_AMF_TOKEN_FILE` over a literal
+environment token. When both variables are present, the protected file takes
+precedence. A systemd `LoadCredential` path is the intended deployment
+mechanism.
+
 ### Search, propose, and project
 
 Standalone search reads the direct SQLite corpus. Active search calls AMF
