@@ -385,6 +385,22 @@ class ObsidianDocumentBridgeTests(unittest.TestCase):
         self.assertEqual(payload["document"]["extraction"]["status"], "failed")
         self.assertEqual(payload["document"]["extraction"]["errorCode"], "invalid_utf8")
 
+    def test_nul_bytes_are_replaced_in_extracted_text_without_changing_source_digest(self):
+        source = b"before\x00after\n"
+        (self.vault / "Nul.md").write_bytes(source)
+        provider = RecordingProvider()
+        with self.bridge(mode="active", providers={"amf": provider}) as bridge:
+            bridge.scan()
+            bridge.drain()
+        payload = provider.calls[0][1]
+        self.assertEqual(payload["text"], "before\ufffdafter\n")
+        self.assertEqual(payload["document"]["contentDigest"], f"sha256:{hashlib.sha256(source).hexdigest()}")
+        self.assertEqual(
+            payload["document"]["extraction"]["textDigest"],
+            f"sha256:{hashlib.sha256(payload['text'].encode('utf-8')).hexdigest()}",
+        )
+        self.assertEqual(payload["document"]["extraction"]["status"], "extracted")
+
     def test_symlink_swap_is_rejected_without_tombstoning_the_tracked_note(self):
         note = self.vault / "Tracked.md"
         note.write_text("inside", encoding="utf-8")
