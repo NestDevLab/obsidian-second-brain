@@ -363,7 +363,11 @@ class ObsidianDocumentBridge:
                 text, extraction_error = None, "content_too_large"
             else:
                 try:
-                    text, extraction_error = content.decode("utf-8"), None
+                    decoded = content.decode("utf-8")
+                    # PostgreSQL text values cannot contain NUL bytes. Preserve the
+                    # source-byte digest while making the extracted text portable
+                    # across the direct SQLite and AMF/PostgreSQL providers.
+                    text, extraction_error = decoded.replace("\x00", "\ufffd"), None
                 except UnicodeDecodeError:
                     text, extraction_error = None, "invalid_utf8"
             return {
