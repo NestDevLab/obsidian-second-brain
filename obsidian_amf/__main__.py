@@ -5,43 +5,25 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import stat
 import sys
 from pathlib import Path
 
 from .bridge import BridgeConfig, ObsidianDocumentBridge
+from .credentials import load_amf_token
+from .metadata import client_metadata, client_source_root
 from .projections import ProjectionWriter
 
 
 def amf_token_from_environment(environment: dict[str, str] | None = None) -> str | None:
-    """Read an AMF bearer from an environment value or a protected regular file."""
-    environment = environment or os.environ
-    token = environment.get("OBSIDIAN_AMF_TOKEN")
-    token_file = environment.get("OBSIDIAN_AMF_TOKEN_FILE")
-    if token and token_file:
-        raise ValueError("amf_token_ambiguous")
-    if not token_file:
-        return token
-    descriptor = os.open(token_file, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-    try:
-        metadata = os.fstat(descriptor)
-        if not stat.S_ISREG(metadata.st_mode):
-            raise ValueError("amf_token_file_invalid")
-        with os.fdopen(descriptor, "rb", closefd=False) as handle:
-            value = handle.read(8193)
-    finally:
-        os.close(descriptor)
-    if len(value) > 8192:
-        raise ValueError("amf_token_file_invalid")
-    decoded = value.decode("utf-8").rstrip("\r\n")
-    if not decoded:
-        raise ValueError("amf_token_file_empty")
-    return decoded
+    """Compatibility wrapper for the hardened credential loader."""
+    return load_amf_token(environment)
 
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(prog="python3 -m obsidian_amf")
-    result.add_argument("command", choices=("scan", "drain", "status", "search", "propose", "project", "unproject"))
+    result.add_argument("command", choices=(
+        "client-metadata", "client-source", "scan", "drain", "status", "search", "propose", "project", "unproject",
+    ))
     result.add_argument("--vault", default=os.environ.get("OBSIDIAN_VAULT_PATH"))
     result.add_argument("--state-db", default=os.environ.get("OBSIDIAN_AMF_STATE_DB", ".amf/bridge-state.sqlite"))
     result.add_argument("--direct-db", default=os.environ.get("OBSIDIAN_AMF_DIRECT_DB", ".amf/documents.sqlite"))
@@ -77,6 +59,15 @@ def read_json_input(path: str | None) -> dict:
 
 def main() -> int:
     args = parser().parse_args()
+    if args.command == "client-metadata":
+        print(json.dumps(client_metadata(), indent=2, sort_keys=True))
+        return 0
+    if args.command == "client-source":
+        print(json.dumps({
+            "metadata": client_metadata(),
+            "sourceRoot": str(client_source_root()),
+        }, indent=2, sort_keys=True))
+        return 0
     if not args.vault:
         raise SystemExit("--vault is required")
     vault = Path(args.vault).expanduser().resolve()
@@ -107,7 +98,7 @@ def main() -> int:
         actor=args.actor,
         mode=args.mode,
         amf_url=args.amf_url,
-        amf_token=amf_token_from_environment(),
+        amf_token=load_amf_token(),
         context_key_ring=Path(args.context_key_ring).expanduser().resolve() if args.context_key_ring else None,
         policy_revision=args.policy_revision,
         context_runtime=args.context_runtime,

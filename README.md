@@ -74,6 +74,11 @@ End of session
 - The upstream Obsidian skill remains a separate dependency and is not modified by this package.
 - AMF integration must remain optional, modular, and backend-agnostic so the local-only workflow continues to work.
 
+The portable package targets Codex, Claude, OpenClaw, and Hermes. Vitae is not
+part of this integration profile. For example, a fleet can select the same
+OpenPack source for those four adapters and let Agentwheel place the skill and
+its client asset in each runtime-specific destination.
+
 ## Optional AMF document bridge
 
 `obsidian_amf` is a read-only vault scanner with a revisioned identity registry
@@ -119,18 +124,41 @@ python3 -m obsidian_amf status --vault /path/to/vault --vault-id vault-personal
 python3 -m obsidian_amf drain --vault /path/to/vault --vault-id vault-personal
 ```
 
+The client has an explicit version and a location-independent source identity:
+
+```bash
+# Deterministic metadata for release/install/status parity
+skills/obsidian-memory/scripts/obsidian-memory client-metadata
+
+# Resolve an Agentwheel-installed asset without assuming a harness directory
+skills/obsidian-memory/scripts/obsidian-memory client-source
+```
+
+`client-source` reports the runtime root separately from the deterministic
+metadata. An AMF host installer can therefore locate the asset through the
+installed skill, validate every declared regular file and the aggregate digest,
+then copy exactly those bytes. The aggregate digest is SHA-256 over the UTF-8
+canonical JSON representation of the ordered `source.files` array (sorted keys
+and compact separators); paths, byte sizes, and per-file SHA-256 digests are all
+covered. Scheduled AMF automation remains shadow-only;
+manual commands continue to support `standalone`, `shadow`, and `active`.
+
 Equivalent settings are available as `OBSIDIAN_VAULT_PATH`,
 `OBSIDIAN_AMF_VAULT_ID`, `OBSIDIAN_AMF_MODE`, `OBSIDIAN_AMF_URL`,
-`OBSIDIAN_AMF_TOKEN`, `OBSIDIAN_AMF_TOKEN_FILE`, `OBSIDIAN_AMF_STATE_DB`, `OBSIDIAN_AMF_DIRECT_DB`,
+`OBSIDIAN_AMF_TOKEN_FILE`, `OBSIDIAN_AMF_TOKEN`, `OBSIDIAN_AMF_STATE_DB`, `OBSIDIAN_AMF_DIRECT_DB`,
 `OBSIDIAN_AMF_SOURCE_INSTANCE`, `OBSIDIAN_AMF_ACTOR`,
 `OBSIDIAN_AMF_CONTEXT_KEY_RING`, `OBSIDIAN_AMF_POLICY_REVISION`,
 `OBSIDIAN_AMF_CONTEXT_RUNTIME`, and `OBSIDIAN_AMF_CONTEXT_PROFILE`. There is no automatic
 provider fallback: a failed AMF delivery remains pending until a later `drain`.
+Services should use `OBSIDIAN_AMF_TOKEN_FILE`; the client accepts only an
+owner-only, single-link regular file with bounded UTF-8 content and never emits
+the token in metadata or status. `OBSIDIAN_AMF_TOKEN` remains compatible for
+interactive invocations and is used only when no token file is configured.
 
 For unattended system services, prefer `OBSIDIAN_AMF_TOKEN_FILE` over a literal
-environment token. It must name a protected regular file containing only the
-bearer; setting both variables is rejected. A systemd `LoadCredential` path is
-the intended deployment mechanism.
+environment token. When both variables are present, the protected file takes
+precedence. A systemd `LoadCredential` path is the intended deployment
+mechanism.
 
 ### Search, propose, and project
 

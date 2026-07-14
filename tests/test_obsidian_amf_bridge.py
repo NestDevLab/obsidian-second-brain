@@ -165,6 +165,15 @@ class ObsidianDocumentBridgeTests(unittest.TestCase):
             self.assertEqual(attempts, 2)
         self.assertEqual(len(provider.calls), 2)
 
+    def test_pending_outbox_is_unhealthy_before_first_delivery_attempt(self):
+        (self.vault / "Queued.md").write_text("queued", encoding="utf-8")
+        with self.bridge(mode="shadow", providers={"direct": RecordingProvider(), "amf": RecordingProvider()}) as bridge:
+            bridge.scan()
+            status = bridge.status()
+        self.assertGreater(status["outbox"]["pending"], 0)
+        self.assertEqual(status["outbox"]["retrying"], 0)
+        self.assertFalse(status["healthy"])
+
     def test_active_http_provider_uses_amf_route_and_idempotency_header(self):
         received = []
 

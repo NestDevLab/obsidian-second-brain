@@ -10,7 +10,9 @@
     "branch": "main-integration",
     "base": "origin/main",
     "strategy": "cherry-pick",
-    "stacks": []
+    "stacks": [
+      "amf-integration-client"
+    ]
   },
   "stacks": [
     {
@@ -97,6 +99,20 @@
       "meta": {
         "purpose": "Issue request-bound AMF context tokens for Obsidian recall"
       }
+    },
+    {
+      "id": "amf-integration-client",
+      "branch": "branch/amf-integration-client",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "581c3c25fc9d1f37963304c00ac90e0e182f1c24",
+        "25c8c2d54e457fc9d6814fbc6702432ef05a57b0",
+        "6d086b2aceaef36b0a4e1595ea011b2379aa5116"
+      ],
+      "meta": {}
     }
   ],
   "syncwheel_tracking": "git-tracked",
