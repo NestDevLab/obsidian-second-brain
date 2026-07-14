@@ -469,6 +469,13 @@ class ObsidianDocumentBridge:
                 or row["destination"] not in self._destinations() \
                 or bool(document.get("tombstone")) != (row["operation"] == "delete"):
             raise RuntimeError("outbox_integrity_failed")
+        text = payload.get("text")
+        if isinstance(text, str) and "\x00" in text:
+            extraction = document.get("extraction")
+            if not isinstance(extraction, dict):
+                raise RuntimeError("outbox_integrity_failed")
+            payload["text"] = text.replace("\x00", "\ufffd")
+            extraction["textDigest"] = sha256_digest(payload["text"].encode("utf-8"))
         return payload
 
     def scan(self) -> dict:

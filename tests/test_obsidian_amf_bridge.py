@@ -401,6 +401,31 @@ class ObsidianDocumentBridgeTests(unittest.TestCase):
         )
         self.assertEqual(payload["document"]["extraction"]["status"], "extracted")
 
+    def test_legacy_nul_outbox_payload_is_normalized_after_integrity_verification(self):
+        source = b"before\x00after\n"
+        (self.vault / "Nul.md").write_bytes(source)
+        provider = RecordingProvider()
+        with self.bridge(mode="active", providers={"amf": provider}) as bridge:
+            bridge.scan()
+            row = bridge.connection.execute("SELECT event_id,payload_json FROM outbox").fetchone()
+            legacy = json.loads(row["payload_json"])
+            legacy["text"] = source.decode("utf-8")
+            legacy["document"]["extraction"]["textDigest"] = f"sha256:{hashlib.sha256(source).hexdigest()}"
+            encoded = json.dumps(legacy, sort_keys=True, separators=(",", ":"))
+            with bridge.connection:
+                bridge.connection.execute(
+                    "UPDATE outbox SET payload_json=?,payload_digest=? WHERE event_id=?",
+                    (encoded, hashlib.sha256(encoded.encode("utf-8")).hexdigest(), row["event_id"]),
+                )
+            result = bridge.drain()
+        self.assertEqual(result["delivered"], 1)
+        payload = provider.calls[0][1]
+        self.assertEqual(payload["text"], "before\ufffdafter\n")
+        self.assertEqual(
+            payload["document"]["extraction"]["textDigest"],
+            f"sha256:{hashlib.sha256(payload['text'].encode('utf-8')).hexdigest()}",
+        )
+
     def test_symlink_swap_is_rejected_without_tombstoning_the_tracked_note(self):
         note = self.vault / "Tracked.md"
         note.write_text("inside", encoding="utf-8")
