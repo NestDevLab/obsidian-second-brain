@@ -28,6 +28,9 @@ dependency. Follow the public architecture contract in
 - Use `python3 -m obsidian_amf scan|drain|status` for revisioned document
   capture and delivery health; never treat a successful scan as proof that the
   outbox was delivered.
+- Use `client-metadata` for deterministic install/status parity and
+  `client-source` to resolve an Agentwheel-installed source asset. Never encode
+  a harness-specific skill path in an AMF installer.
 - Use `search` for direct SQLite or AMF contextual recall. In `shadow` mode the
   direct result is authoritative and AMF failure is diagnostic only.
 - For AMF search, prefer the actor-specific owner-only context key ring and
@@ -38,3 +41,5 @@ dependency. Follow the public architecture contract in
 - Run `project` only after an explicit selection. Managed projections are active
   plaintext PAM records under `.amf/records/`; never copy sealed claims or edit
   those files as if they were canonical memory.
+- Keep manual `standalone`, `shadow`, and `active` behavior available. AMF-managed
+  scheduled automation is shadow-only.

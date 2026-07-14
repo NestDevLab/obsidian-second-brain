@@ -9,12 +9,16 @@ import sys
 from pathlib import Path
 
 from .bridge import BridgeConfig, ObsidianDocumentBridge
+from .credentials import load_amf_token
+from .metadata import client_metadata, client_source_root
 from .projections import ProjectionWriter
 
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(prog="python3 -m obsidian_amf")
-    result.add_argument("command", choices=("scan", "drain", "status", "search", "propose", "project", "unproject"))
+    result.add_argument("command", choices=(
+        "client-metadata", "client-source", "scan", "drain", "status", "search", "propose", "project", "unproject",
+    ))
     result.add_argument("--vault", default=os.environ.get("OBSIDIAN_VAULT_PATH"))
     result.add_argument("--state-db", default=os.environ.get("OBSIDIAN_AMF_STATE_DB", ".amf/bridge-state.sqlite"))
     result.add_argument("--direct-db", default=os.environ.get("OBSIDIAN_AMF_DIRECT_DB", ".amf/documents.sqlite"))
@@ -50,6 +54,15 @@ def read_json_input(path: str | None) -> dict:
 
 def main() -> int:
     args = parser().parse_args()
+    if args.command == "client-metadata":
+        print(json.dumps(client_metadata(), indent=2, sort_keys=True))
+        return 0
+    if args.command == "client-source":
+        print(json.dumps({
+            "metadata": client_metadata(),
+            "sourceRoot": str(client_source_root()),
+        }, indent=2, sort_keys=True))
+        return 0
     if not args.vault:
         raise SystemExit("--vault is required")
     vault = Path(args.vault).expanduser().resolve()
@@ -80,7 +93,7 @@ def main() -> int:
         actor=args.actor,
         mode=args.mode,
         amf_url=args.amf_url,
-        amf_token=os.environ.get("OBSIDIAN_AMF_TOKEN"),
+        amf_token=load_amf_token(),
         context_key_ring=Path(args.context_key_ring).expanduser().resolve() if args.context_key_ring else None,
         policy_revision=args.policy_revision,
         context_runtime=args.context_runtime,

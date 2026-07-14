@@ -16,6 +16,7 @@ from pathlib import Path, PurePosixPath
 from typing import Callable, Iterable
 
 from .context_signer import ContextSigner
+from .metadata import client_identity
 
 
 MODES = {"standalone", "shadow", "active"}
@@ -631,12 +632,14 @@ class ObsidianDocumentBridge:
             "SELECT count(*) FROM outbox WHERE status='quarantined'"
         ).fetchone()[0]
         rejected = cursor["rejected_file_count"] if cursor else 0
+        pending = self.pending_count()
         return {
+            "client": client_identity(),
             "mode": self.config.mode,
             "vaultId": self.config.vault_id,
             "cursor": dict(cursor) if cursor else None,
-            "outbox": {"pending": self.pending_count(), "retrying": failed, "quarantined": quarantined},
-            "healthy": failed == 0 and quarantined == 0 and rejected == 0,
+            "outbox": {"pending": pending, "retrying": failed, "quarantined": quarantined},
+            "healthy": pending == 0 and failed == 0 and quarantined == 0 and rejected == 0,
         }
 
     def search(self, *, query: str, scopes: list[str], purpose: str, context_token: str, limit: int = 20) -> dict:
