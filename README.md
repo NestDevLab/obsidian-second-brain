@@ -50,7 +50,7 @@ End of session
 | `hooks/obsidian-find-hook.py` | `UserPromptSubmit` | Embeds each prompt via ollama, runs cosine similarity against the vault index DB, injects up to 3 matching note snippets as context. Aggregates each note's top 2 chunks, boosts notes whose title/path matches query terms, and drops results below `MIN_SCORE` (default `0.60`, set via `OBSIDIAN_FIND_MIN_SCORE`) so off-topic prompts inject nothing. Falls back to grep if index is absent. |
 | `hooks/build_vault_index.py` | (one-shot / Stop) | Builds or rebuilds `~/.claude/vault-index.db` — a SQLite DB of `nomic-embed-text` embeddings for all vault notes. Supports `--incremental` to skip unchanged files. |
 | `hooks/update-vault-index.sh` | `Stop` | Thin wrapper that calls `build_vault_index.py --incremental` after each session, logging to `~/.claude/vault-index.log`. |
-| `hooks/obsidian-bg-agent.sh` | `PostCompact` | After Claude compacts context, runs a headless agent that propagates the session summary to the vault. Opt-in: requires `OBSIDIAN_BG_AGENT_ENABLED=1`. |
+| `hooks/obsidian-bg-agent.sh` | `PostCompact` | After Claude compacts context, runs a headless agent that propagates the session summary to the vault. Opt-in: requires `OBSIDIAN_BG_AGENT_ENABLED=1`. Runs with `--permission-mode default` + an `--allowedTools` allowlist (no `--dangerously-skip-permissions`). |
 | `hooks/validate-ai-first.sh` | `PostToolUse (Write\|Edit)` | Validates every vault write against the AI-first rule: frontmatter, `## For future Claude` preamble, no banned Unicode. Non-blocking — surfaces warnings back to Claude to self-correct. |
 
 ### Hook config
@@ -201,6 +201,48 @@ removes only that managed projection and never changes canonical PAM.
 ```bash
 python3 -m obsidian_amf project --vault /path/to/vault --input selected-memory.json
 python3 -m obsidian_amf unproject --vault /path/to/vault --memory-id mem_example123
+```
+
+### MCP adapter (governed)
+
+`obsidian_amf/mcp_server.py` exposes the fabric to MCP-native agents (Claude
+Desktop, OpenCode, Cursor, Cline) over stdio — no custom client needed. Tools:
+`amf_search` (ACL-filtered combined memory + document search with cited vault
+paths), `amf_status`, `amf_propose` (curation queue only; never a direct
+canonical write).
+
+Governance stays server-side: each harness runs its own adapter process with
+its own actor credentials from the environment (`OBSIDIAN_AMF_*` —
+`TOKEN_FILE`, `CONTEXT_KEY_RING`, `ACTOR`, `POLICY_REVISION`, `URL`,
+`VAULT_ID`, plus `OBSIDIAN_VAULT_PATH`). AMF enforces that actor's scopes and
+vault ACLs on every call; there is no shared gateway token. The adapter always
+uses `active` mode (AMF authoritative for search).
+
+```jsonc
+// OpenCode (~/.config/opencode/opencode.json → "mcp")
+"amf": {
+  "type": "local",
+  "command": ["python3", "-m", "obsidian_amf.mcp_server"],
+  "enabled": true,
+  "environment": {
+    "PYTHONPATH": "/path/to/obsidian-second-brain",
+    "OBSIDIAN_VAULT_PATH": "/path/to/vault",
+    "OBSIDIAN_AMF_VAULT_ID": "your-vault-id",
+    "OBSIDIAN_AMF_URL": "http://127.0.0.1:8787",
+    "OBSIDIAN_AMF_TOKEN_FILE": "/private/obsidian/<actor>-token",
+    "OBSIDIAN_AMF_CONTEXT_KEY_RING": "/private/obsidian/<actor>-context-key-ring.json",
+    "OBSIDIAN_AMF_POLICY_REVISION": "policy-production-v1",
+    "OBSIDIAN_AMF_ACTOR": "<actor>",
+    "OBSIDIAN_AMF_SOURCE_INSTANCE": "<machine>-<agent>"
+  }
+}
+
+// Claude Desktop (claude_desktop_config.json → "mcpServers") — same shape:
+"amf": {
+  "command": "python3",
+  "args": ["-m", "obsidian_amf.mcp_server"],
+  "env": { "PYTHONPATH": "/path/to/obsidian-second-brain", "...": "same OBSIDIAN_AMF_* env as above" }
+}
 ```
 
 ## Setup
@@ -366,6 +408,8 @@ Replace every `<PATH_TO_REPO>` with the absolute path from Step 2, `<PATH_TO_YOU
 > **Named save session:** the `--name 'obsidian-save (bg)'` flag labels the spawned background agent so it is identifiable in session/process listings and logs, distinct from your interactive session. Rename it freely; it is cosmetic.
 
 > **Stop-hook permissions:** the auto-save agent runs with `--permission-mode default` and an explicit `--allowedTools` allowlist (file tools, subagent `Task`, and `Bash(mkdir *)` only) rather than `--dangerously-skip-permissions`. In headless `-p` mode any tool outside the list is denied automatically, so a misfire can't run arbitrary `Bash` or touch files outside the vault. `--add-dir` grants write access to the vault path. If your global `settings.json` sets `defaultMode: bypassPermissions`, the explicit `--permission-mode default` flag is required to re-enable the allowlist for this spawned session.
+
+> **Bg-agent permissions:** the PostCompact bg-agent (`obsidian-bg-agent.sh`) uses the same pattern — `--permission-mode default`, `--add-dir <vault>`, and an `--allowedTools` allowlist of file tools plus `Bash(mkdir *)` — rather than `--dangerously-skip-permissions`. It additionally stays dual-gate opt-in (`OBSIDIAN_VAULT_PATH` + `OBSIDIAN_BG_AGENT_ENABLED=1`) because it writes unattended.
 
 ### Step 7 — Initialize your vault
 

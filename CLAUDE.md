@@ -20,5 +20,5 @@ When asked to set up this repo on a machine, follow the 8-step install in `READM
 
 - No comments unless the why is non-obvious; no error handling for impossible/internal cases.
 - Prefer editing existing files over creating new ones.
-- Never use `--dangerously-skip-permissions`; the Stop hook uses `--permission-mode default` + an `--allowedTools` allowlist.
+- Never use `--dangerously-skip-permissions`; the Stop hook and the PostCompact bg-agent use `--permission-mode default` + an `--allowedTools` allowlist.
 - When adding a feature/fix/tool, update `README.md` and `AGENTS.md` (if architecture changes) before considering the task done.

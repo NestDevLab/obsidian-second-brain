@@ -21,7 +21,7 @@ hooks/
   obsidian-find-hook.py   → UserPromptSubmit: vector search via ollama
   build_vault_index.py    → one-shot/Stop: builds vault-index.db
   update-vault-index.sh   → Stop: thin wrapper, calls build_vault_index.py --incremental
-  obsidian-bg-agent.sh    → PostCompact: headless agent, dual-gate opt-in
+  obsidian-bg-agent.sh    → PostCompact: headless agent, dual-gate opt-in, allowlisted tools
   validate-ai-first.sh    → PostToolUse(Write|Edit): AI-first rule enforcement
   *.hook.yaml             → platform-neutral hook specs
   postcompact.hook.example.json → ready-to-paste JSON snippet
@@ -29,6 +29,7 @@ obsidian_amf/
   bridge.py                     → revisioned scanner, outbox, providers, health
   context_signer.py             → short-lived tokens bound to exact recall requests
   projections.py                → explicit managed PAM-to-vault projections
+  mcp_server.py                 → governed stdio MCP adapter (amf_search/status/propose)
   __main__.py                   → standalone CLI
 tests/
   test_obsidian_amf_bridge.py   → deterministic lifecycle and outage tests
@@ -74,7 +75,13 @@ The other two (`load_vault_context.py`, `validate-ai-first.sh`) run from their r
 - `OBSIDIAN_VAULT_PATH` set
 - `OBSIDIAN_BG_AGENT_ENABLED=1`
 
-The setup script sets the first but never the second. No vault writes happen unattended without deliberate opt-in.
+The setup script sets the first but never the second. No vault writes happen unattended without deliberate opt-in. When enabled, the agent runs with `--permission-mode default` + an `--allowedTools` allowlist (file tools + `Bash(mkdir *)`), never `--dangerously-skip-permissions`.
+
+### PostCompact bg-agent reference
+Until v1.8.0 the bg-agent invoked `claude --dangerously-skip-permissions` and was inert-by-default for that reason. v1.9.0 hardened it to the Stop-hook pattern (`--permission-mode default` + `--allowedTools`, plus `--name 'obsidian-bg-agent (bg)'`), keeping the dual-gate opt-in. `tests/test_no_dangerous_flags.py` guards the regression.
+
+### MCP adapter
+`mcp_server.py` (v1.9.0) wraps the bridge as an MCP stdio server so MCP-native agents (Claude Desktop, OpenCode, Cursor, Cline) can query the fabric. It always runs `active` mode and takes one actor's credentials from `OBSIDIAN_AMF_*` env — governance (scopes, vault ACLs, policy revision) is enforced by AMF server-side, never by the adapter. Each harness runs its own adapter process with its own actor identity; there is no shared token. Tools: `amf_search`, `amf_status`, `amf_propose`. Tests: `tests/test_obsidian_amf_mcp.py`.
 
 ### Hardcoded defaults to watch
 - `hooks/update-vault-index.sh` line 6 — vault path defaults to `/Users/guido.dilauro/WORKDIR/WORK-WIKI` (overridden by env var at runtime)

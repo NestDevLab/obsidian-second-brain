@@ -5,9 +5,13 @@
 # summary from stdin (JSON), then runs a headless Claude agent to propagate
 # everything worth preserving to the vault.
 #
-# TRUST CAVEAT: this agent writes to the vault UNATTENDED using
-# --dangerously-skip-permissions. For that reason it is OPT-IN and ships INERT.
-# It requires BOTH of the following before it does anything:
+# TRUST MODEL: this agent writes to the vault UNATTENDED, so it runs with
+# --permission-mode default and an explicit --allowedTools allowlist (file
+# tools plus Bash(mkdir *) only) rather than --dangerously-skip-permissions.
+# In headless -p mode any tool outside the list is denied automatically, so a
+# misfire cannot run arbitrary Bash or touch files outside the vault. Even so,
+# it is OPT-IN and ships INERT. It requires BOTH of the following before it
+# does anything:
 #   - OBSIDIAN_VAULT_PATH set (where to write), AND
 #   - OBSIDIAN_BG_AGENT_ENABLED=1 (a second, deliberate enable flag)
 # setup.sh sets the first but never the second, so the agent stays inert after a
@@ -95,10 +99,14 @@ INSTRUCTIONS
 PROMPT=$(cat "$PROMPT_FILE")
 rm -f "$PROMPT_FILE"
 
-# Run headless agent in vault directory - async, logs to /tmp for debugging
+# Run headless agent in vault directory with an allowlisted tool set - async,
+# logs to /tmp for debugging. --add-dir grants write access to the vault path;
+# in headless -p mode any tool outside --allowedTools is denied automatically.
 (
   cd "$VAULT" && \
-  claude --dangerously-skip-permissions -p "$PROMPT" >> /tmp/obsidian-bg-agent.log 2>&1
+  claude --name 'obsidian-bg-agent (bg)' --permission-mode default --add-dir "$VAULT" \
+    --allowedTools 'Read' 'Edit' 'Write' 'Glob' 'Grep' 'Bash(mkdir *)' \
+    -p "$PROMPT" >> /tmp/obsidian-bg-agent.log 2>&1
 ) &
 
 exit 0

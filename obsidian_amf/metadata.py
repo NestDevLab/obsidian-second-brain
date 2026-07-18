@@ -10,7 +10,7 @@ from pathlib import Path
 
 CLIENT_METADATA_SCHEMA = "obsidian-amf-client/v1"
 CLIENT_NAME = "obsidian_amf"
-CLIENT_VERSION = "1.0.0"
+CLIENT_VERSION = "1.1.0"
 SOURCE_FILES = (
     "__init__.py",
     "__main__.py",
@@ -18,6 +18,7 @@ SOURCE_FILES = (
     "context_signer.py",
     "credentials.py",
     "metadata.py",
+    "mcp_server.py",
     "projections.py",
 )
 

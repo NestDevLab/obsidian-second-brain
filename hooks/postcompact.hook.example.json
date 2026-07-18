@@ -1,9 +1,10 @@
 // postcompact.hook.example.json - paste-in template for ~/.claude/settings.json
 //
 // OPT-IN / DISABLED BY DEFAULT. The background agent writes to your vault
-// UNATTENDED with --dangerously-skip-permissions, so it ships inert. It does
+// UNATTENDED, so it runs with --permission-mode default + an --allowedTools
+// allowlist (no --dangerously-skip-permissions) and ships inert. It does
 // nothing until BOTH env vars below are set AND the PostCompact hook is
-// registered. Read the trust caveat at the top of hooks/obsidian-bg-agent.sh
+// registered. Read the trust model at the top of hooks/obsidian-bg-agent.sh
 // before enabling.
 //
 // If you ran scripts/setup.sh: it already registered the PostCompact hook and
