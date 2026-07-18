@@ -81,7 +81,7 @@ The setup script sets the first but never the second. No vault writes happen una
 Until v1.8.0 the bg-agent invoked `claude --dangerously-skip-permissions` and was inert-by-default for that reason. v1.9.0 hardened it to the Stop-hook pattern (`--permission-mode default` + `--allowedTools`, plus `--name 'obsidian-bg-agent (bg)'`), keeping the dual-gate opt-in. `tests/test_no_dangerous_flags.py` guards the regression.
 
 ### MCP adapter
-`mcp_server.py` (v1.9.0) wraps the bridge as an MCP stdio server so MCP-native agents (Claude Desktop, OpenCode, Cursor, Cline) can query the fabric. It always runs `active` mode and takes one actor's credentials from `OBSIDIAN_AMF_*` env — governance (scopes, vault ACLs, policy revision) is enforced by AMF server-side, never by the adapter. Each harness runs its own adapter process with its own actor identity; there is no shared token. Tools: `amf_search`, `amf_status`, `amf_propose`. Tests: `tests/test_obsidian_amf_mcp.py`.
+`mcp_server.py` (v1.9.0) wraps the bridge as an MCP stdio server so MCP-native agents (Claude Desktop, OpenCode, Cursor, Cline) can query the fabric. It always runs `active` mode and takes one actor's credentials from `OBSIDIAN_AMF_*` env — governance (scopes, vault ACLs, policy revision) is enforced by AMF server-side, never by the adapter. Each harness runs its own adapter process with its own actor identity; there is no shared token. Tools: `amf_search`, `amf_status`, `amf_propose`. Tests: `tests/test_obsidian_amf_mcp.py`. Full guide: `docs/mcp-adapter.md`.
 
 ### Hardcoded defaults to watch
 - `hooks/update-vault-index.sh` line 6 — vault path defaults to `/Users/guido.dilauro/WORKDIR/WORK-WIKI` (overridden by env var at runtime)

@@ -205,6 +205,9 @@ python3 -m obsidian_amf unproject --vault /path/to/vault --memory-id mem_example
 
 ### MCP adapter (governed)
 
+Full guide with compatibility matrix, setup, examples, and troubleshooting:
+[docs/mcp-adapter.md](docs/mcp-adapter.md).
+
 `obsidian_amf/mcp_server.py` exposes the fabric to MCP-native agents (Claude
 Desktop, OpenCode, Cursor, Cline) over stdio — no custom client needed. Tools:
 `amf_search` (ACL-filtered combined memory + document search with cited vault
