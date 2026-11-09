@@ -3,8 +3,10 @@
 
 Falls back to grep if the index DB doesn't exist yet.
 """
+import array
 import json
 import math
+import operator
 import os
 import sqlite3
 import subprocess
@@ -19,35 +21,43 @@ TOP_K = 3
 SNIPPET_CHARS = 400
 # Drop results whose final score is below this cosine-equivalent cutoff so
 # off-topic prompts inject nothing instead of 5 noisy notes. Override via env.
-MIN_SCORE = float(os.environ.get("OBSIDIAN_FIND_MIN_SCORE", "0.60"))
+# nomic-embed-text scores nearly all prose in a 0.63-0.73 band, so cosine alone
+# cannot separate an off-topic prompt from a recall question. Phrasing is the
+# real signal: an explicit ask gets a loose cutoff, everything else needs a
+# score above the ambient band to inject at all.
+MIN_SCORE = float(os.environ.get("OBSIDIAN_FIND_MIN_SCORE", "0.72"))
+EXPLICIT_MIN_SCORE = float(os.environ.get("OBSIDIAN_FIND_EXPLICIT_MIN_SCORE", "0.45"))
+VAULT_INTENT = ("vault", "wiki", "obsidian", "second brain", "note", "notes",
+                "remember", "recall", "we discussed", "last time", "did i",
+                "did we", "decide", "decision", "previously")
 # How many of a note's best chunks to average — more robust than a single chunk.
 CHUNKS_PER_NOTE = 2
 # Score added when a meaningful query word appears in the note's title/path.
 TITLE_BOOST = 0.05
 
 
-def cosine(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
-    na = math.sqrt(sum(x * x for x in a))
-    nb = math.sqrt(sum(x * x for x in b))
-    return dot / (na * nb) if na and nb else 0.0
-
-
-def embed(text: str) -> list[float] | None:
+def embed(text: str) -> array.array | None:
     try:
         payload = json.dumps({"model": MODEL, "prompt": text}).encode()
         req = urllib.request.Request(OLLAMA_URL, data=payload, headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=5) as resp:
-            return json.loads(resp.read())["embedding"]
+            v = json.loads(resp.read())["embedding"]
     except Exception:
         return None
+    norm = math.sqrt(sum(x * x for x in v)) or 1.0
+    return array.array("f", (x / norm for x in v))
 
 
 def query_terms(prompt: str) -> set[str]:
     return {w.lower() for w in prompt.split() if len(w) >= 3}
 
 
-def vector_search(prompt: str) -> list[tuple[str, str]]:
+def wants_vault(prompt: str) -> bool:
+    p = prompt.lower()
+    return any(k in p for k in VAULT_INTENT)
+
+
+def vector_search(prompt: str, min_score: float) -> list[tuple[str, str]]:
     qemb = embed(prompt)
     if qemb is None:
         return []
@@ -56,9 +66,13 @@ def vector_search(prompt: str) -> list[tuple[str, str]]:
     rows = conn.execute("SELECT path, chunk_text, embedding FROM embeddings").fetchall()
     conn.close()
 
+    # Stored vectors are unit-normalized float32, so the dot product is the cosine.
+    mul = operator.mul
     per_note: dict[str, list[tuple[float, str]]] = {}
-    for path, chunk_text, emb_json in rows:
-        score = cosine(qemb, json.loads(emb_json))
+    for path, chunk_text, blob in rows:
+        v = array.array("f")
+        v.frombytes(blob)
+        score = sum(map(mul, qemb, v))
         per_note.setdefault(path, []).append((score, chunk_text))
 
     terms = query_terms(prompt)
@@ -75,7 +89,7 @@ def vector_search(prompt: str) -> list[tuple[str, str]]:
     return [
         (path, data[1][:SNIPPET_CHARS])
         for path, data in ranked[:TOP_K]
-        if data[0] >= MIN_SCORE
+        if data[0] >= min_score
     ]
 
 
@@ -114,8 +128,9 @@ def main() -> None:
     if not prompt:
         return
 
+    min_score = EXPLICIT_MIN_SCORE if wants_vault(prompt) else MIN_SCORE
     use_vector = os.path.exists(DB)
-    results = vector_search(prompt) if use_vector else grep_fallback(prompt)
+    results = vector_search(prompt, min_score) if use_vector else grep_fallback(prompt)
 
     if not results:
         return

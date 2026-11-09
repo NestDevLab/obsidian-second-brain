@@ -87,10 +87,16 @@ Until v1.8.0 the bg-agent invoked `claude --dangerously-skip-permissions` and wa
 - `hooks/update-vault-index.sh` line 6 — vault path defaults to `/Users/guido.dilauro/WORKDIR/WORK-WIKI` (overridden by env var at runtime)
 - `hooks/build_vault_index.py` line 17 — same pattern
 
+### Vector index format
+`build_vault_index.py` stores unit-normalized float32 blobs (`array('f')`), and `obsidian-find-hook.py` scores with a plain dot product. The two must change together. `CREATE TABLE IF NOT EXISTS` never migrates an old JSON-text table, and `--incremental` skips unchanged notes, so an upgraded install needs one full (non-incremental) rebuild.
+
+The find hook uses two cutoffs: `OBSIDIAN_FIND_MIN_SCORE` (0.72) for ambient prompts and `OBSIDIAN_FIND_EXPLICIT_MIN_SCORE` (0.45) for prompts that hit the `VAULT_INTENT` keywords. A single cutoff can't work, because `nomic-embed-text` scores almost all prose at 0.63–0.73.
+
 ### Stop hook reference
 The Stop hook's auto-save command references `SKILL.md` (not `obsidian-second-brain.md`). This was fixed in v1.1.0.
 In v1.2.0 the command gained a `--model <SAVE_MODEL>` flag (with a cost note recommending a cheap model tier) so the per-turn save agent doesn't run on the default session model.
 In v1.3.0 the command gained a `--name 'obsidian-save (bg)'` flag so the spawned background save agent is identifiable in session/process listings, distinct from the interactive session (cosmetic).
+The command is prefixed with `[ -n "$OBSIDIAN_SAVE_BG" ] || OBSIDIAN_SAVE_BG=1`. The save agent's own Stop event re-fires the hook, and without that guard it keeps spawning saves of saves.
 
 ### Repository origin
 This repo moved from `guidodl/obsidian-second-brain` to `NestDevLab/obsidian-second-brain`. The old URL redirects.

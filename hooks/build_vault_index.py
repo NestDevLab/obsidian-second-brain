@@ -4,10 +4,13 @@
 Usage:
     python3 build_vault_index.py [--vault PATH] [--db PATH] [--incremental]
 
-Stores embeddings in a SQLite DB. Each row: path, mtime, chunk_text, embedding (JSON float list).
+Stores embeddings in a SQLite DB. Each row: path, mtime, chunk_text, embedding
+(unit-normalized float32 blob, so cosine similarity is a plain dot product).
 """
 import argparse
+import array
 import json
+import math
 import os
 import sqlite3
 import sys
@@ -22,11 +25,14 @@ CHUNK_CHARS = 2000
 CHUNK_OVERLAP = 200
 
 
-def embed(text: str) -> list[float]:
+def embed(text: str) -> bytes:
     payload = json.dumps({"model": MODEL, "prompt": text}).encode()
     req = urllib.request.Request(OLLAMA_URL, data=payload, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read())["embedding"]
+        v = json.loads(resp.read())["embedding"]
+    # Empty notes embed to an empty vector.
+    norm = math.sqrt(sum(x * x for x in v)) or 1.0
+    return array.array("f", (x / norm for x in v)).tobytes()
 
 
 def chunk(text: str) -> list[str]:
@@ -40,6 +46,8 @@ def chunk(text: str) -> list[str]:
 
 
 def init_db(conn: sqlite3.Connection) -> None:
+    # WAL lets the per-prompt hook read while a reindex is writing.
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS embeddings (
             id INTEGER PRIMARY KEY,
@@ -47,7 +55,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             mtime REAL NOT NULL,
             chunk_index INTEGER NOT NULL,
             chunk_text TEXT NOT NULL,
-            embedding TEXT NOT NULL,
+            embedding BLOB NOT NULL,
             UNIQUE(path, chunk_index)
         )
     """)
@@ -72,7 +80,7 @@ def index_file(conn: sqlite3.Connection, path: Path, vault: str, force: bool = F
         emb = embed(c)
         conn.execute(
             "INSERT INTO embeddings(path, mtime, chunk_index, chunk_text, embedding) VALUES (?,?,?,?,?)",
-            (rel, mtime, i, c, json.dumps(emb))
+            (rel, mtime, i, c, emb)
         )
     conn.commit()
     return len(chunks)
@@ -86,7 +94,8 @@ def main() -> int:
     args = parser.parse_args()
 
     vault = args.vault.rstrip("/")
-    conn = sqlite3.connect(args.db)
+    # Overlapping Stop-hook reindexes otherwise crash with "database is locked".
+    conn = sqlite3.connect(args.db, timeout=120)
     init_db(conn)
 
     files = list(Path(vault).rglob("*.md"))
