@@ -47,11 +47,11 @@ End of session
 | File | Trigger | What it does |
 |---|---|---|
 | `hooks/load_vault_context.py` | `SessionStart` | Reads `_CLAUDE.md` from the vault and injects it into every session as context. Requires `OBSIDIAN_VAULT_PATH` env var. |
-| `hooks/obsidian-find-hook.py` | `UserPromptSubmit` | Embeds each prompt via ollama, runs cosine similarity against the vault index DB, injects up to 3 matching note snippets as context. Aggregates each note's top 2 chunks, boosts notes whose title/path matches query terms, and drops results below `MIN_SCORE` (default `0.60`, set via `OBSIDIAN_FIND_MIN_SCORE`) so off-topic prompts inject nothing. Falls back to grep if index is absent. |
-| `hooks/build_vault_index.py` | (one-shot / Stop) | Builds or rebuilds `~/.claude/vault-index.db` — a SQLite DB of `nomic-embed-text` embeddings for all vault notes. Supports `--incremental` to skip unchanged files. |
+| `hooks/obsidian-find-hook.py` | `UserPromptSubmit` | Embeds each prompt via ollama, runs cosine similarity against the vault index DB, injects up to 3 matching note snippets as context. Aggregates each note's top 2 chunks, boosts notes whose title/path matches query terms, and drops weak results. `nomic-embed-text` scores almost all prose in a 0.63–0.73 band, so cosine alone can't tell an off-topic prompt from a recall question; the cutoff is picked from phrasing instead. Prompts naming the vault or past work ("notes", "remember", "did we", "decision", …) use `OBSIDIAN_FIND_EXPLICIT_MIN_SCORE` (default `0.45`); everything else must clear `OBSIDIAN_FIND_MIN_SCORE` (default `0.72`), so ambient prompts usually inject nothing. Falls back to grep if index is absent. |
+| `hooks/build_vault_index.py` | (one-shot / Stop) | Builds or rebuilds `~/.claude/vault-index.db` — a SQLite DB of `nomic-embed-text` embeddings for all vault notes. Supports `--incremental` to skip unchanged files. Embeddings are stored as unit-normalized float32 blobs, so the find hook's cosine is a plain dot product; the DB runs in WAL mode with a 120 s busy timeout so overlapping Stop-hook reindexes don't fail with `database is locked`. |
 | `hooks/update-vault-index.sh` | `Stop` | Thin wrapper that calls `build_vault_index.py --incremental` after each session, logging to `~/.claude/vault-index.log`. |
 | `hooks/obsidian-bg-agent.sh` | `PostCompact` | After Claude compacts context, runs a headless agent that propagates the session summary to the vault. Opt-in: requires `OBSIDIAN_BG_AGENT_ENABLED=1`. Runs with `--permission-mode default` + an `--allowedTools` allowlist (no `--dangerously-skip-permissions`). |
-| `hooks/validate-ai-first.sh` | `PostToolUse (Write\|Edit)` | Validates every vault write against the AI-first rule: frontmatter, `## For future Claude` preamble, no banned Unicode. Non-blocking — surfaces warnings back to Claude to self-correct. |
+| `hooks/validate-ai-first.sh` | `PostToolUse (Write\|Edit)` | Validates every vault write against the AI-first rule: frontmatter, `## For future Claude` preamble, no banned Unicode. Exits 2 with the warnings on stderr, which is how a Claude Code `PostToolUse` hook gets them in front of Claude. The write itself still stands, so Claude can repair the note. |
 
 ### Hook config
 
@@ -323,9 +323,13 @@ OBSIDIAN_VAULT_PATH=<OBSIDIAN_VAULT_PATH> python3 ~/.claude/build_vault_index.py
 
 This takes a few minutes on a large vault (a 155-note vault takes ~2 min). After the initial build, the Stop hook keeps it updated incrementally.
 
+> **Upgrading from a JSON-embedding index:** earlier versions stored embeddings as JSON text. Incremental runs skip unchanged notes, so they leave those rows in place, and the current find hook can't read them. After updating the scripts, run the command above once without `--incremental` to re-embed every note as float32.
+
 ### Step 6 — Configure `~/.claude/settings.json`
 
 Add the env vars and hook entries. If `settings.json` already exists, merge the `env` and `hooks` blocks — don't replace the whole file.
+
+> **Installed the skill as a Claude Code plugin?** The plugin's `hooks/hooks.json` already registers its own `SessionStart` (vault context), `PostToolUse` (AI-first validator) and `PostCompact` (bg-agent) hooks. Leave those three out of the block below, or they fire twice. A doubled `SessionStart` injects the whole vault manual twice in every session. Keep the `UserPromptSubmit` and `Stop` entries, which only this repo provides. The plugin's `PostCompact` bg-agent is upstream's, which runs with `--dangerously-skip-permissions`. It stays inert unless `OBSIDIAN_BG_AGENT_ENABLED=1`, and if you set that, both bg-agents will run. Check what's active with `/hooks`.
 
 ```json
 {
@@ -387,7 +391,7 @@ Add the env vars and hook entries. If `settings.json` already exists, merge the 
         "hooks": [
           {
             "type": "command",
-"command": "OBSIDIAN_VAULT_PATH=<PATH_TO_YOUR_VAULT> <CLAUDE_BINARY> --name 'obsidian-save (bg)' --model <SAVE_MODEL> --permission-mode default --add-dir <PATH_TO_YOUR_VAULT> --allowedTools 'Read' 'Edit' 'Write' 'Glob' 'Grep' 'Task' 'TodoWrite' 'Skill' 'Bash(mkdir *)' -p 'Read ~/.claude/skills/obsidian-second-brain/SKILL.md and run /obsidian-save on this session.' 2>/dev/null || true",
+"command": "[ -n \"$OBSIDIAN_SAVE_BG\" ] || OBSIDIAN_SAVE_BG=1 OBSIDIAN_VAULT_PATH=<PATH_TO_YOUR_VAULT> <CLAUDE_BINARY> --name 'obsidian-save (bg)' --model <SAVE_MODEL> --permission-mode default --add-dir <PATH_TO_YOUR_VAULT> --allowedTools 'Read' 'Edit' 'Write' 'Glob' 'Grep' 'Task' 'TodoWrite' 'Skill' 'Bash(mkdir *)' -p 'Read ~/.claude/skills/obsidian-second-brain/SKILL.md and run /obsidian-save on this session.' 2>/dev/null || true",
             "timeout": 120,
             "async": true
           },
@@ -407,6 +411,8 @@ Add the env vars and hook entries. If `settings.json` already exists, merge the 
 Replace every `<PATH_TO_REPO>` with the absolute path from Step 2, `<PATH_TO_YOUR_VAULT>` with your Obsidian vault path, `<CLAUDE_BINARY>` with what you get from `which claude`, and `<SAVE_MODEL>` with the model to run the auto-save agent on.
 
 > **Auto-save model (cost):** the Stop hook spawns a fresh headless agent on **every turn**, so the model it runs on is the single biggest recurring cost of this setup. The `/obsidian-save` task — scan the conversation, search the vault, write notes — is well within reach of a cheap model, so set `<SAVE_MODEL>` to your fastest/cheapest tier (e.g. `haiku`, or a Haiku inference-profile ARN on Bedrock) rather than the default session model. Drop the `--model` flag entirely to inherit your global default — but on an Opus default that makes the per-turn save agent expensive.
+
+> **Recursion guard:** the spawned save agent is itself a Claude session, so its own Stop event fires this hook again, and without a guard every save starts another save. The leading `[ -n "$OBSIDIAN_SAVE_BG" ] ||` skips the spawn when the hook is already running inside a save agent; `OBSIDIAN_SAVE_BG=1` marks the child.
 
 > **Named save session:** the `--name 'obsidian-save (bg)'` flag labels the spawned background agent so it is identifiable in session/process listings and logs, distinct from your interactive session. Rename it freely; it is cosmetic.
 

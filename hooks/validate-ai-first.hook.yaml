@@ -3,7 +3,7 @@ description: >
   PostToolUse hook on Write and Edit. Warns when a markdown file inside
   OBSIDIAN_VAULT_PATH fails the AI-first vault rule (missing required
   frontmatter fields, missing 'For future Claude' preamble, broken YAML).
-  Non-blocking: the file write still succeeds; the agent sees the warning
+  Exits 2 on warnings (Claude Code passes PostToolUse stderr to the agent only on exit 2). The file write still succeeds; the agent sees the warning
   in stderr and can choose to repair.
 script: validate-ai-first.sh
 triggers:
