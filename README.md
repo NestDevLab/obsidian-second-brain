@@ -51,7 +51,7 @@ End of session
 | `hooks/build_vault_index.py` | (one-shot / Stop) | Builds or rebuilds `~/.claude/vault-index.db` — a SQLite DB of `nomic-embed-text` embeddings for all vault notes. Supports `--incremental` to skip unchanged files. Embeddings are stored as unit-normalized float32 blobs, so the find hook's cosine is a plain dot product; the DB runs in WAL mode with a 120 s busy timeout so overlapping Stop-hook reindexes don't fail with `database is locked`. |
 | `hooks/update-vault-index.sh` | `Stop` | Thin wrapper that calls `build_vault_index.py --incremental` after each session, logging to `~/.claude/vault-index.log`. |
 | `hooks/obsidian-bg-agent.sh` | `PostCompact` | After Claude compacts context, runs a headless agent that propagates the session summary to the vault. Opt-in: requires `OBSIDIAN_BG_AGENT_ENABLED=1`. Runs with `--permission-mode default` + an `--allowedTools` allowlist (no `--dangerously-skip-permissions`). |
-| `hooks/validate-ai-first.sh` | `PostToolUse (Write\|Edit)` | Validates every vault write against the AI-first rule: frontmatter, `## For future Claude` preamble, no banned Unicode. Non-blocking — surfaces warnings back to Claude to self-correct. |
+| `hooks/validate-ai-first.sh` | `PostToolUse (Write\|Edit)` | Validates every vault write against the AI-first rule: frontmatter, `## For future Claude` preamble, no banned Unicode. Exits 2 with the warnings on stderr, which is how a Claude Code `PostToolUse` hook gets them in front of Claude. The write itself still stands, so Claude can repair the note. |
 
 ### Hook config
 
@@ -328,6 +328,8 @@ This takes a few minutes on a large vault (a 155-note vault takes ~2 min). After
 ### Step 6 — Configure `~/.claude/settings.json`
 
 Add the env vars and hook entries. If `settings.json` already exists, merge the `env` and `hooks` blocks — don't replace the whole file.
+
+> **Installed the skill as a Claude Code plugin?** The plugin's `hooks/hooks.json` already registers its own `SessionStart` (vault context), `PostToolUse` (AI-first validator) and `PostCompact` (bg-agent) hooks. Leave those three out of the block below, or they fire twice. A doubled `SessionStart` injects the whole vault manual twice in every session. Keep the `UserPromptSubmit` and `Stop` entries, which only this repo provides. The plugin's `PostCompact` bg-agent is upstream's, which runs with `--dangerously-skip-permissions`. It stays inert unless `OBSIDIAN_BG_AGENT_ENABLED=1`, and if you set that, both bg-agents will run. Check what's active with `/hooks`.
 
 ```json
 {

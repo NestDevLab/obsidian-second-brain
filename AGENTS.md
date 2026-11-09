@@ -83,6 +83,11 @@ Until v1.8.0 the bg-agent invoked `claude --dangerously-skip-permissions` and wa
 ### MCP adapter
 `mcp_server.py` (v1.9.0) wraps the bridge as an MCP stdio server so MCP-native agents (Claude Desktop, OpenCode, Cursor, Cline) can query the fabric. It always runs `active` mode and takes one actor's credentials from `OBSIDIAN_AMF_*` env — governance (scopes, vault ACLs, policy revision) is enforced by AMF server-side, never by the adapter. Each harness runs its own adapter process with its own actor identity; there is no shared token. Tools: `amf_search`, `amf_status`, `amf_propose`. Tests: `tests/test_obsidian_amf_mcp.py`. Full guide: `docs/mcp-adapter.md`.
 
+### Plugin installs register hooks too
+Installed as a Claude Code plugin, the upstream skill registers `SessionStart`, `PostToolUse` (its own `validate-ai-first.sh`) and `PostCompact` (upstream bg-agent, `--dangerously-skip-permissions`) through its `hooks/hooks.json`. Adding the same events from README Step 6 makes them fire twice, so plugin users should only add `UserPromptSubmit` and `Stop`. Plugin hooks can't be disabled one at a time from `settings.json`.
+
+`validate-ai-first.sh` exits 2 on warnings, because Claude Code passes `PostToolUse` stderr to Claude only on exit 2. Exit 1 shows the warning to the user and Claude never sees it.
+
 ### Hardcoded defaults to watch
 - `hooks/update-vault-index.sh` line 6 — vault path defaults to `/Users/guido.dilauro/WORKDIR/WORK-WIKI` (overridden by env var at runtime)
 - `hooks/build_vault_index.py` line 17 — same pattern

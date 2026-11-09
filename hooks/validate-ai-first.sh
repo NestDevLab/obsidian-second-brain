@@ -66,7 +66,7 @@ if [[ "$FIRST_LINE" != "---" ]]; then
   # Without frontmatter we can't run the other checks meaningfully — surface
   # this single warning and exit.
   printf 'AI-first warning: %s\n' "${WARNINGS[0]}" >&2
-  exit 1
+  exit 2
 fi
 
 DELIMITER_COUNT=$(grep -c '^---$' "$FILE")
@@ -155,7 +155,7 @@ if [[ ${#WARNINGS[@]} -gt 0 ]]; then
     printf '  - %s\n' "$w" >&2
   done
   printf '\nSee references/ai-first-rules.md for the full spec.\n' >&2
-  exit 1
+  exit 2
 fi
 
 exit 0
