@@ -100,17 +100,31 @@ def main() -> int:
 
     files = list(Path(vault).rglob("*.md"))
     total = indexed = 0
+    seen = set()
     for f in files:
         if any(p.startswith(".") for p in f.parts):
             continue
         total += 1
+        seen.add(str(f).replace(vault + "/", ""))
         n = index_file(conn, f, vault, force=not args.incremental)
         if n:
             indexed += 1
             print(f"  indexed {f.relative_to(vault)} ({n} chunk{'s' if n > 1 else ''})", flush=True)
 
+    # Rows for deleted or renamed notes are otherwise kept forever. Path comparison is
+    # case-sensitive, so a case-only rename on a case-insensitive filesystem is caught too.
+    # An empty scan means a missing or unmounted vault, not an empty one: keep the index.
+    pruned = 0
+    if seen:
+        stale = [p for (p,) in conn.execute("SELECT DISTINCT path FROM embeddings") if p not in seen]
+        for p in stale:
+            conn.execute("DELETE FROM embeddings WHERE path=?", (p,))
+            print(f"  pruned {p}", flush=True)
+        conn.commit()
+        pruned = len(stale)
+
     conn.close()
-    print(f"\nDone: {indexed}/{total} files indexed → {args.db}")
+    print(f"\nDone: {indexed}/{total} files indexed, {pruned} pruned → {args.db}")
     return 0
 
 

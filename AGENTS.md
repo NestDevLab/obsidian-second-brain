@@ -95,6 +95,8 @@ Installed as a Claude Code plugin, the upstream skill registers `SessionStart`, 
 ### Vector index format
 `build_vault_index.py` stores unit-normalized float32 blobs (`array('f')`), and `obsidian-find-hook.py` scores with a plain dot product. The two must change together. `CREATE TABLE IF NOT EXISTS` never migrates an old JSON-text table, and `--incremental` skips unchanged notes, so an upgraded install needs one full (non-incremental) rebuild.
 
+Each run prunes rows whose path is no longer in the scan, so deleted and renamed notes stop surfacing as dangling `[[links]]`. The comparison is case-sensitive on purpose: on a case-insensitive filesystem a case-only rename leaves the old spelling resolvable, so an existence check would keep it as a duplicate hit. A scan that finds zero notes skips pruning, so a wrong or unmounted vault path can't wipe the index. Before this fix (2026-11-11) the live index had collected 166 such ghost paths. Tests: `tests/test_build_vault_index.py`.
+
 The find hook uses two cutoffs: `OBSIDIAN_FIND_MIN_SCORE` (0.72) for ambient prompts and `OBSIDIAN_FIND_EXPLICIT_MIN_SCORE` (0.45) for prompts that hit the `VAULT_INTENT` keywords. A single cutoff can't work, because `nomic-embed-text` scores almost all prose at 0.63–0.73.
 
 ### Stop hook reference
