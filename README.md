@@ -391,7 +391,7 @@ Add the env vars and hook entries. If `settings.json` already exists, merge the 
         "hooks": [
           {
             "type": "command",
-"command": "[ -n \"$OBSIDIAN_SAVE_BG\" ] || OBSIDIAN_SAVE_BG=1 OBSIDIAN_VAULT_PATH=<PATH_TO_YOUR_VAULT> <CLAUDE_BINARY> --name 'obsidian-save (bg)' --model <SAVE_MODEL> --permission-mode default --add-dir <PATH_TO_YOUR_VAULT> --allowedTools 'Read' 'Edit' 'Write' 'Glob' 'Grep' 'Task' 'TodoWrite' 'Skill' 'Bash(mkdir *)' -p 'Read ~/.claude/skills/obsidian-second-brain/SKILL.md and run /obsidian-save on this session.' 2>/dev/null || true",
+"command": "[ -n \"$OBSIDIAN_SAVE_BG\" ] || { echo \"== $(date -u '+%Y-%m-%dT%H:%M:%SZ')\"; OBSIDIAN_SAVE_BG=1 OBSIDIAN_VAULT_PATH=<PATH_TO_YOUR_VAULT> <CLAUDE_BINARY> --name 'obsidian-save (bg)' --model <SAVE_MODEL> --permission-mode default --add-dir <PATH_TO_YOUR_VAULT> --allowedTools 'Read' 'Edit' 'Write' 'Glob' 'Grep' 'Task' 'TodoWrite' 'Skill' 'Bash(mkdir *)' -p \"Read ~/.claude/skills/obsidian-second-brain/SKILL.md and run /obsidian-save on this session. The current time is $(date -u '+%Y-%m-%d %H:%M UTC'). Use it for every timestamp you write and never estimate one.\"; echo \"exit=$?\"; } >> ~/.claude/obsidian-save.log 2>&1 || true",
             "timeout": 120,
             "async": true
           },
@@ -413,6 +413,10 @@ Replace every `<PATH_TO_REPO>` with the absolute path from Step 2, `<PATH_TO_YOU
 > **Auto-save model (cost):** the Stop hook spawns a fresh headless agent on **every turn**, so the model it runs on is the single biggest recurring cost of this setup. The `/obsidian-save` task — scan the conversation, search the vault, write notes — is well within reach of a cheap model, so set `<SAVE_MODEL>` to your fastest/cheapest tier (e.g. `haiku`, or a Haiku inference-profile ARN on Bedrock) rather than the default session model. Drop the `--model` flag entirely to inherit your global default — but on an Opus default that makes the per-turn save agent expensive.
 
 > **Recursion guard:** the spawned save agent is itself a Claude session, so its own Stop event fires this hook again, and without a guard every save starts another save. The leading `[ -n "$OBSIDIAN_SAVE_BG" ] ||` skips the spawn when the hook is already running inside a save agent; `OBSIDIAN_SAVE_BG=1` marks the child.
+
+> **Real timestamps:** the save agent has no clock of its own and will otherwise guess the time for log and daily-note entries, sometimes landing hours in the future. The prompt is double-quoted so `$(date -u ...)` expands when the hook fires, handing the agent the actual time.
+
+> **Save log:** each run appends a `== <UTC time>` header, the agent's output and an `exit=<status>` line to `~/.claude/obsidian-save.log`, so a save that fails (auth, model access, permissions) shows up there instead of disappearing. The file isn't rotated; truncate it whenever you like.
 
 > **Named save session:** the `--name 'obsidian-save (bg)'` flag labels the spawned background agent so it is identifiable in session/process listings and logs, distinct from your interactive session. Rename it freely; it is cosmetic.
 

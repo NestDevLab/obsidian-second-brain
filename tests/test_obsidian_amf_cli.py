@@ -5,6 +5,10 @@ from pathlib import Path
 
 from obsidian_amf.__main__ import amf_token_from_environment
 
+# The AMF loaders refuse symlinked path components, and macOS temp dirs sit under
+# the /var -> /private/var symlink.
+tempfile.tempdir = os.path.realpath(tempfile.gettempdir())
+
 
 class AmfTokenEnvironmentTests(unittest.TestCase):
     def test_reads_a_bearer_from_a_regular_file(self):
