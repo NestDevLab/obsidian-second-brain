@@ -391,7 +391,7 @@ Add the env vars and hook entries. If `settings.json` already exists, merge the 
         "hooks": [
           {
             "type": "command",
-"command": "[ -n \"$OBSIDIAN_SAVE_BG\" ] || { echo \"== $(date -u '+%Y-%m-%dT%H:%M:%SZ')\"; OBSIDIAN_SAVE_BG=1 OBSIDIAN_VAULT_PATH=<PATH_TO_YOUR_VAULT> <CLAUDE_BINARY> --name 'obsidian-save (bg)' --model <SAVE_MODEL> --permission-mode default --add-dir <PATH_TO_YOUR_VAULT> --allowedTools 'Read' 'Edit' 'Write' 'Glob' 'Grep' 'Task' 'TodoWrite' 'Skill' 'Bash(mkdir *)' -p \"Read ~/.claude/skills/obsidian-second-brain/SKILL.md and run /obsidian-save on this session. The current time is $(date -u '+%Y-%m-%d %H:%M UTC'). Use it for every timestamp you write and never estimate one.\"; echo \"exit=$?\"; } >> ~/.claude/obsidian-save.log 2>&1 || true",
+"command": "[ -n \"$OBSIDIAN_SAVE_BG\" ] || { echo \"== $(date -u '+%Y-%m-%dT%H:%M:%SZ')\"; OBSIDIAN_SAVE_BG=1 OBSIDIAN_VAULT_PATH=<PATH_TO_YOUR_VAULT> <CLAUDE_BINARY> --name 'obsidian-save (bg)' --model <SAVE_MODEL> --permission-mode default --add-dir <PATH_TO_YOUR_VAULT> --allowedTools 'Read' 'Edit' 'Write' 'Glob' 'Grep' 'Task' 'TodoWrite' 'Skill' 'Bash(mkdir *)' -p \"Read ~/.claude/skills/obsidian-second-brain/SKILL.md and run /obsidian-save on this session. The current time is $(date -u '+%Y-%m-%d %H:%M UTC'). Use it for every timestamp you write and never estimate one. When the save is done, add every note you created to index.md under its folder heading, append one entry for this save to today's operation log (Logs/YYYY-MM-DD.md, or log.md if there is no Logs/ folder), and quote both lines in your report.\"; echo \"exit=$?\"; } >> ~/.claude/obsidian-save.log 2>&1 || true",
             "timeout": 120,
             "async": true
           },
@@ -415,6 +415,8 @@ Replace every `<PATH_TO_REPO>` with the absolute path from Step 2, `<PATH_TO_YOU
 > **Recursion guard:** the spawned save agent is itself a Claude session, so its own Stop event fires this hook again, and without a guard every save starts another save. The leading `[ -n "$OBSIDIAN_SAVE_BG" ] ||` skips the spawn when the hook is already running inside a save agent; `OBSIDIAN_SAVE_BG=1` marks the child.
 
 > **Real timestamps:** the save agent has no clock of its own and will otherwise guess the time for log and daily-note entries, sometimes landing hours in the future. The prompt is double-quoted so `$(date -u ...)` expands when the hook fires, handing the agent the actual time.
+
+> **Index and operation log:** the upstream `/obsidian-save` command ends by updating the daily note and never mentions `index.md` or the operation log. That rule lives only in `SKILL.md`'s propagation table, so a cheap save model skips it often (it did on 2026-11-11), leaving new notes unindexed. The prompt asks for both writes explicitly, and asks the agent to quote them in its report so a missing one shows up in the save log.
 
 > **Save log:** each run appends a `== <UTC time>` header, the agent's output and an `exit=<status>` line to `~/.claude/obsidian-save.log`, so a save that fails (auth, model access, permissions) shows up there instead of disappearing. The file isn't rotated; truncate it whenever you like.
 

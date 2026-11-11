@@ -103,6 +103,7 @@ The find hook uses two cutoffs: `OBSIDIAN_FIND_MIN_SCORE` (0.72) for ambient pro
 The Stop hook's auto-save command references `SKILL.md` (not `obsidian-second-brain.md`). This was fixed in v1.1.0.
 In v1.2.0 the command gained a `--model <SAVE_MODEL>` flag (with a cost note recommending a cheap model tier) so the per-turn save agent doesn't run on the default session model.
 In v1.3.0 the command gained a `--name 'obsidian-save (bg)'` flag so the spawned background save agent is identifiable in session/process listings, distinct from the interactive session (cosmetic).
+The prompt tells the save agent to add new notes to `index.md` and append an operation-log entry, then quote both. Upstream `commands/obsidian-save.md` omits that step (it lives only in `SKILL.md`'s propagation table), and the cheap save model skipped it.
 The command is prefixed with `[ -n "$OBSIDIAN_SAVE_BG" ] || OBSIDIAN_SAVE_BG=1`. The save agent's own Stop event re-fires the hook, and without that guard it keeps spawning saves of saves.
 
 ### Repository origin
