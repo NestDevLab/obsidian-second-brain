@@ -12,6 +12,10 @@ from obsidian_amf import CLIENT_VERSION, client_metadata, client_source_root, lo
 from obsidian_amf.credentials import MAX_TOKEN_BYTES, private_token
 from obsidian_amf.metadata import SOURCE_FILES
 
+# The AMF loaders refuse symlinked path components, and macOS temp dirs sit under
+# the /var -> /private/var symlink.
+tempfile.tempdir = os.path.realpath(tempfile.gettempdir())
+
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 

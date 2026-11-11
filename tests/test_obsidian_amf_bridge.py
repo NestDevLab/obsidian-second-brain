@@ -13,6 +13,10 @@ from pathlib import Path
 
 from obsidian_amf import BridgeConfig, ContextSigner, ObsidianDocumentBridge, ProjectionWriter
 
+# The AMF loaders refuse symlinked path components, and macOS temp dirs sit under
+# the /var -> /private/var symlink.
+tempfile.tempdir = os.path.realpath(tempfile.gettempdir())
+
 
 class RecordingProvider:
     def __init__(self, failures=0, search_result=None, search_error=None):
